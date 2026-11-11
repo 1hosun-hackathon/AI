@@ -27,7 +27,9 @@ async def health(ctx: Ctx = Depends(get_ctx)) -> dict:
 
 @router.post("/ai/reference-draft", response_model=ReferenceDraftResponse)
 async def create_reference_draft(req: ReferenceDraftRequest, ctx: Ctx = Depends(get_ctx)):
-    return await reference_draft.run(ctx, req)
+    res = await reference_draft.run(ctx, req)
+    analyze.prescore_ai(ctx, req.topic, res.draft)  # 학습자가 초안을 쓰는 동안 AI 글을 미리 채점
+    return res
 
 
 def _submit(jobs: JobStore, kind: str, factory: JobFactory) -> JobCreated:

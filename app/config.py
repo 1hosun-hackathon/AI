@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     llm_seed: int = 42
 
     # 프롬프트·가드레일
-    prompt_version: str = "v4"
+    prompt_version: str = "v5"
     guardrail_max_retry: int = 1
     ngram_n: int = 12
 
