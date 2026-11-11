@@ -1,0 +1,1021 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "글적글적 AI 서버",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/reference-draft": {
+      "post": {
+        "summary": "Create Reference Draft",
+        "operationId": "create_reference_draft_ai_reference_draft_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferenceDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceDraftResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/analyze": {
+      "post": {
+        "summary": "Submit Analyze",
+        "operationId": "submit_analyze_ai_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/reanalyze": {
+      "post": {
+        "summary": "Submit Reanalyze",
+        "operationId": "submit_reanalyze_ai_reanalyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReanalyzeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/jobs/{job_id}": {
+      "get": {
+        "summary": "Get Job",
+        "operationId": "get_job_ai_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/dependency": {
+      "post": {
+        "summary": "Compute Dependency",
+        "operationId": "compute_dependency_ai_dependency_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DependencyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependencyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalysisResult": {
+        "properties": {
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "partial",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemResult"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "overall_report": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Report"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Strengths",
+            "default": []
+          },
+          "improvements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Improvements",
+            "default": []
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Questions",
+            "default": []
+          },
+          "failed_items": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "thesis",
+                "evidence",
+                "structure",
+                "expression",
+                "originality"
+              ]
+            },
+            "type": "array",
+            "title": "Failed Items",
+            "default": []
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt_version",
+          "model",
+          "status",
+          "items"
+        ],
+        "title": "AnalysisResult"
+      },
+      "AnalyzeRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements",
+            "default": {}
+          },
+          "user_draft": {
+            "type": "string",
+            "title": "User Draft"
+          },
+          "ai_draft": {
+            "type": "string",
+            "title": "Ai Draft"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "user_draft",
+          "ai_draft"
+        ],
+        "title": "AnalyzeRequest"
+      },
+      "DependencyMethod": {
+        "properties": {
+          "embedding_model": {
+            "type": "string",
+            "title": "Embedding Model"
+          },
+          "ai_similar_threshold": {
+            "type": "number",
+            "title": "Ai Similar Threshold"
+          },
+          "keep_threshold": {
+            "type": "number",
+            "title": "Keep Threshold"
+          },
+          "weighting": {
+            "type": "string",
+            "const": "chars",
+            "title": "Weighting",
+            "default": "chars"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "embedding_model",
+          "ai_similar_threshold",
+          "keep_threshold",
+          "description"
+        ],
+        "title": "DependencyMethod"
+      },
+      "DependencyRequest": {
+        "properties": {
+          "user_draft": {
+            "type": "string",
+            "title": "User Draft"
+          },
+          "final_text": {
+            "type": "string",
+            "title": "Final Text"
+          },
+          "ai_draft": {
+            "type": "string",
+            "title": "Ai Draft"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_draft",
+          "final_text",
+          "ai_draft"
+        ],
+        "title": "DependencyRequest"
+      },
+      "DependencyResponse": {
+        "properties": {
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "self_composition_ratio": {
+            "type": "number",
+            "title": "Self Composition Ratio"
+          },
+          "ai_dependency_ratio": {
+            "type": "number",
+            "title": "Ai Dependency Ratio"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/SentenceLabel"
+            },
+            "type": "array",
+            "title": "Sentences"
+          },
+          "method": {
+            "$ref": "#/components/schemas/DependencyMethod"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt_version",
+          "model",
+          "self_composition_ratio",
+          "ai_dependency_ratio",
+          "sentences",
+          "method"
+        ],
+        "title": "DependencyResponse"
+      },
+      "Evidence": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "user",
+              "ai"
+            ],
+            "title": "Source"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote",
+            "description": "원문 그대로의 문장 (서버가 문장 번호로 채움)"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "quote",
+          "reason"
+        ],
+        "title": "Evidence"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ItemResult": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "thesis",
+              "evidence",
+              "structure",
+              "expression",
+              "originality"
+            ],
+            "title": "Key"
+          },
+          "user_score": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "User Score"
+          },
+          "ai_score": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Ai Score"
+          },
+          "user_summary": {
+            "type": "string",
+            "title": "User Summary"
+          },
+          "ai_summary": {
+            "type": "string",
+            "title": "Ai Summary"
+          },
+          "comparison": {
+            "type": "string",
+            "title": "Comparison"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "type": "array",
+            "title": "Evidence",
+            "default": []
+          },
+          "better": {
+            "type": "string",
+            "enum": [
+              "user",
+              "ai",
+              "tie"
+            ],
+            "title": "Better"
+          },
+          "action_item": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Item",
+            "description": "가드레일을 통과하지 못하면 null"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "user_score",
+          "ai_score",
+          "user_summary",
+          "ai_summary",
+          "comparison",
+          "better"
+        ],
+        "title": "ItemResult"
+      },
+      "JobCreated": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id"
+        ],
+        "title": "JobCreated"
+      },
+      "JobStatus": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisResult"
+              },
+              {
+                "$ref": "#/components/schemas/ReanalysisResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "analyze job이면 AnalysisResult, reanalyze job이면 ReanalysisResult. state가 done일 때만 채워진다."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "state"
+        ],
+        "title": "JobStatus"
+      },
+      "ReanalyzeRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements",
+            "default": {}
+          },
+          "original_draft": {
+            "type": "string",
+            "title": "Original Draft"
+          },
+          "current_draft": {
+            "type": "string",
+            "title": "Current Draft"
+          },
+          "ai_draft": {
+            "type": "string",
+            "title": "Ai Draft"
+          },
+          "previous_result": {
+            "$ref": "#/components/schemas/AnalysisResult"
+          },
+          "round": {
+            "type": "integer",
+            "minimum": 2.0,
+            "title": "Round"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "original_draft",
+          "current_draft",
+          "ai_draft",
+          "previous_result",
+          "round"
+        ],
+        "title": "ReanalyzeRequest"
+      },
+      "ReferenceDraftRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic"
+        ],
+        "title": "ReferenceDraftRequest"
+      },
+      "ReferenceDraftResponse": {
+        "properties": {
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "draft": {
+            "type": "string",
+            "title": "Draft"
+          },
+          "char_count": {
+            "type": "integer",
+            "title": "Char Count"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt_version",
+          "model",
+          "draft",
+          "char_count"
+        ],
+        "title": "ReferenceDraftResponse"
+      },
+      "Requirements": {
+        "properties": {
+          "length": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length",
+            "description": "분량 문자열. 예: \"800~1000자\""
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format",
+            "description": "글 형식. 예: 논설문"
+          },
+          "extra": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra"
+          },
+          "min_chars": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Chars",
+            "description": "추가 제안 필드(선택)"
+          },
+          "max_chars": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Chars",
+            "description": "추가 제안 필드(선택)"
+          }
+        },
+        "type": "object",
+        "title": "Requirements"
+      },
+      "SentenceLabel": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "kept",
+              "new",
+              "ai_similar"
+            ],
+            "title": "Label"
+          },
+          "sim_user": {
+            "type": "number",
+            "title": "Sim User"
+          },
+          "sim_ai": {
+            "type": "number",
+            "title": "Sim Ai"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "label",
+          "sim_user",
+          "sim_ai"
+        ],
+        "title": "SentenceLabel"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ActionItemReview": {
+        "properties": {
+          "key": {
+            "enum": [
+              "thesis",
+              "evidence",
+              "structure",
+              "expression",
+              "originality"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "action_item": {
+            "title": "Action Item",
+            "type": "string"
+          },
+          "reflected": {
+            "enum": [
+              "yes",
+              "partial",
+              "no"
+            ],
+            "title": "Reflected",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "action_item",
+          "reflected",
+          "reason"
+        ],
+        "title": "ActionItemReview",
+        "type": "object"
+      },
+      "ReanalysisResult": {
+        "properties": {
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "partial",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemResult"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "overall_report": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Overall Report"
+          },
+          "strengths": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Strengths",
+            "type": "array"
+          },
+          "improvements": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Improvements",
+            "type": "array"
+          },
+          "questions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "failed_items": {
+            "default": [],
+            "items": {
+              "enum": [
+                "thesis",
+                "evidence",
+                "structure",
+                "expression",
+                "originality"
+              ],
+              "type": "string"
+            },
+            "title": "Failed Items",
+            "type": "array"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "action_item_review": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ActionItemReview"
+            },
+            "title": "Action Item Review",
+            "type": "array"
+          },
+          "score_delta": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "propertyNames": {
+              "enum": [
+                "thesis",
+                "evidence",
+                "structure",
+                "expression",
+                "originality"
+              ]
+            },
+            "title": "Score Delta",
+            "type": "object"
+          }
+        },
+        "required": [
+          "prompt_version",
+          "model",
+          "status",
+          "items"
+        ],
+        "title": "ReanalysisResult",
+        "type": "object"
+      }
+    }
+  }
+}
