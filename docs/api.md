@@ -21,6 +21,88 @@ LLM_PROVIDER=mock MOCK_DELAY_SEC=0.5 uvicorn app.main:app --port 8000
 - 점수는 입력 글의 해시로 정해져 같은 입력이면 같은 결과가 나온다(2~5점). 실제 평가 품질과는 관계없다.
 - `/ai/dependency`는 원래 LLM을 쓰지 않지만, 가짜 모드에서는 임베딩도 글자 기반 가짜 벡터라 값이 실제와 다르다.
 
+## 백엔드 명세 형식 API (`/ai/v2`, 백엔드 연동용)
+
+백엔드 API 명세서(2-1, 3-2, 3-4, 3-5, 4-1, 4-2)의 필드 이름·형식에 맞춘 엔드포인트다. 받은 값을 그대로 넘기고 결과를 그대로 저장하면 된다. 아래 `/ai/...` 엔드포인트와 같은 파이프라인을 쓰며 형식만 다르다.
+
+| 백엔드 API | 호출 | 방식 |
+|---|---|---|
+| 2-1 훈련 생성 (AI 작성 글 백그라운드 생성), 4-4 재시도 | `POST /ai/v2/ai-writing` | 동기 (수십 초) |
+| 3-2 초안 제출 (`seqNo: 0`), 3-4 다시 검사하기 (`seqNo ≥ 1`) | `POST /ai/v2/analyses` | 비동기 (202 + `jobId`) |
+| 4-1 분석 상태 | `GET /ai/v2/analyses/{jobId}` | 동기, 2초 폴링 |
+| 3-5 훈련 완료 → 5-4·5-5 자기 사고 비율 | `POST /ai/v2/self-thought-ratio` | 동기, LLM 미사용 |
+
+### POST /ai/v2/ai-writing
+
+```json
+// 요청: training 값 그대로
+{ "topic": "기후변화와 탄소 중립 정책의 실효성", "writingType": "논설문", "requirements": "800~1,000자, 근거 2개 이상" }
+// 응답: content를 4-2 aiWriting.content로 저장
+{ "content": "...", "charCount": 930, "warnings": [], "promptVersion": "v4", "model": "gemma4:e2b-it-qat" }
+```
+
+`requirements` 문자열 안의 "800~1,000자", "1000자 이내", "500자 이상"을 분량으로 해석하고, 나머지 조건도 모델에 그대로 전달한다. 첨부파일은 받지 않는다.
+
+### POST /ai/v2/analyses
+
+```json
+// 3-2 초안 제출
+{ "topic": "...", "writingType": "논설문", "requirements": "...", "seqNo": 0,
+  "myWriting": { "content": "초안" }, "aiWriting": { "content": "AI 작성 글" } }
+// 3-4 다시 검사하기: baseline(최초 초안)과 previousResult(직전 회차 result 그대로)가 필수
+{ "topic": "...", "writingType": "논설문", "requirements": "...", "seqNo": 1,
+  "myWriting": { "content": "수정본" }, "aiWriting": { "content": "..." },
+  "baseline": { "content": "최초 초안" }, "previousResult": { /* 직전 회차 result */ } }
+// 응답 (202)
+{ "jobId": "uuid", "status": "PENDING" }
+```
+
+### GET /ai/v2/analyses/{jobId}
+
+```json
+{ "jobId": "...", "status": "PENDING | GENERATING | SUCCESS | FAILED", "result": { ... } | null, "error": { ... } | null }
+```
+
+`status`는 4-1의 분석 상태 값과 같다. `SUCCESS`일 때 `result`는 4-2 응답의 AI 부분과 같은 이름이다.
+
+```json
+{
+  "seqNo": 0,
+  "overallSummary": "종합 리포트 | null",
+  "strengths": "강점 (여러 개면 줄바꿈으로 구분)",
+  "improvements": "보완할 점 (여러 개면 줄바꿈으로 구분)",
+  "items": [
+    { "criterion": "THESIS", "label": "목적·주제 설정", "description": "다루는 문제와 범위, 글의 목적이 분명한가",
+      "userSummary": "...", "aiSummary": "...", "comparison": "...", "reflectPoint": "보완 방향 | null",
+      "userScore": 3, "aiScore": 4, "better": "user | ai | tie",
+      "evidence": [ { "source": "user | ai", "quote": "원문 문장", "reason": "..." } ] }
+  ],
+  "questions": [ { "seqNo": 1, "content": "스스로 점검하는 질문" } ],
+  "reflectionReviews": [ { "criterion": "THESIS", "reflectPoint": "...", "reflected": "yes | partial | no", "reason": "..." } ],
+  "scoreDelta": { "THESIS": 1 },
+  "partial": false, "warnings": [],
+  "promptVersion": "v4", "model": "gemma4:e2b-it-qat"
+}
+```
+
+- `items`는 THESIS, EVIDENCE, STRUCTURE, EXPRESSION, ORIGINALITY 순서로 5개다. `label`·`description`은 화면에 그대로 쓰면 된다(현재 평가 기준 이름이며, 명세 예시의 "논지 / 핵심 주장과 관점"과 다르다).
+- `userScore`·`aiScore`·`better`·`evidence`는 화면에 표시하지 않아도 되지만 result 전체를 저장해 둔다. 대시보드(`mostImproved`, `focusArea`)는 `userScore`로 계산하고, 다시 검사할 때 `previousResult`로 그대로 보낸다.
+- `reflectionReviews`, `scoreDelta`는 다시 검사(`seqNo ≥ 1`)일 때만 채워진다.
+- `partial: true`이면 일부 항목·필드가 빠진 것이고 사유는 `warnings`에 있다.
+
+### POST /ai/v2/self-thought-ratio
+
+```json
+// 요청: 5-2의 draft, finalWriting과 AI 작성 글
+{ "draft": { "content": "최초 초안" }, "finalWriting": { "content": "최종 글" }, "aiWriting": { "content": "..." } }
+// 응답: 비율은 0~100 (소수 첫째 자리), 둘의 합은 100
+{ "selfThoughtRatio": 71.0, "aiDependencyRatio": 29.0,
+  "sentences": [ { "text": "...", "label": "kept | new | ai_similar", "simUser": 0.82, "simAi": 0.41 } ],
+  "method": "산정 기준 설명", "promptVersion": "v4", "model": "bge-m3" }
+```
+
+에러 형식과 코드는 아래 [에러](#에러)와 같다.
+
 ## 엔드포인트
 
 | 메서드 | 경로 | 방식 | 설명 |

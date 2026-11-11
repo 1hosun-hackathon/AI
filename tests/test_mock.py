@@ -41,3 +41,20 @@ def test_mock_mode_serves_every_endpoint():
 
         r = client.post("/ai/dependency", json={"user_draft": USER, "final_text": USER, "ai_draft": AI})
         assert r.status_code == 200, r.json()
+
+
+def test_mock_mode_serves_backend_spec_endpoints():
+    settings = Settings(_env_file=None, warmup=False, llm_provider="mock")
+    task = {"topic": TOPIC, "writingType": "논설문", "requirements": "800~1,000자, 근거 2개 이상"}
+    with TestClient(create_app(settings)) as client:
+        r = client.post("/ai/v2/ai-writing", json=task)
+        assert r.status_code == 200 and 800 <= r.json()["charCount"] <= 1000, r.json()
+
+        r = client.post("/ai/v2/analyses", json={**task, "myWriting": {"content": USER}, "aiWriting": {"content": AI}})
+        job_id = r.json()["jobId"]
+        for _ in range(500):
+            body = client.get(f"/ai/v2/analyses/{job_id}").json()
+            if body["status"] in ("SUCCESS", "FAILED"):
+                break
+        assert body["status"] == "SUCCESS", body
+        assert [it["criterion"] for it in body["result"]["items"]] == [k.upper() for k in CRITERIA]
