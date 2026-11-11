@@ -1,7 +1,7 @@
 import pytest
 
 from app.llm.base import LLMOutputError
-from app.llm.outputs import ItemEvalOutput, SummaryOutput
+from app.llm.outputs import SummaryOutput, TextScoreWithActionOutput
 from app.llm.structured import clean_json_text, generate_structured, inline_schema
 from tests.fakes import FakeProvider
 
@@ -19,12 +19,11 @@ def test_clean_json_text_strips_fence_and_think():
 
 
 def test_inline_schema_has_no_refs():
-    schema = inline_schema(ItemEvalOutput)
+    schema = inline_schema(TextScoreWithActionOutput)
     assert "$defs" not in schema and "$ref" not in str(schema)
-    assert schema["properties"]["a_score"]["enum"] == [1, 2, 3, 4, 5]
-    # 생성 순서 = 필드 순서: 요약 → 근거 → 비교 → 점수
-    keys = list(schema["properties"])
-    assert keys.index("evidence") < keys.index("comparison") < keys.index("a_score")
+    assert schema["properties"]["score"]["enum"] == [1, 2, 3, 4, 5]
+    # 생성 순서 = 필드 순서: 요약 → 근거 → 점수 → 보완 방향
+    assert list(schema["properties"]) == ["summary", "evidence", "score", "action"]
 
 
 async def test_retries_once_with_error_message():

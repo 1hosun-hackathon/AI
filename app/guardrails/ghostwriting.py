@@ -5,7 +5,9 @@ from collections.abc import Iterable
 
 from app.text.sentences import compact
 
-_QUOTED = re.compile(r"[\"“”'‘’「『]([^\"“”'‘’」』]{15,})[\"“”'‘’」』]")
+# 따옴표 안이 문장 끝(~다, ~요, ~까)으로 끝날 때만 예시 문장으로 본다.
+# 개념 인용('자기 조절')이 두 개 있을 때 그 사이 구간을 잘못 잡지 않게 하기 위함.
+_QUOTED = re.compile(r"[\"“”'‘’「『]([^\"“”'‘’」』]{15,}?[다요까][.?!]?)[\"“”'‘’」』]")
 _EXAMPLE_PATTERNS = [
     re.compile(r"예\s*[:：]"),
     re.compile(r"예를\s*들(어|면)[^.?!]{0,40}(라고|처럼)\s*(쓰|써|작성|바꾸|바꿔|고치|고쳐)"),

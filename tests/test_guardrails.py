@@ -1,7 +1,7 @@
 from app.guardrails.citation import resolve_evidence
 from app.guardrails.ghostwriting import copied_ngrams, example_sentence_reasons, ghostwriting_issues
 from app.guardrails.questions import rule_check_question
-from app.llm.outputs import EvidenceRef
+from app.llm.outputs import SentenceRef
 
 AI_DRAFT = "스마트폰 일괄 수거는 청소년이 자기 조절 능력을 기를 기회를 빼앗는다는 점에서 바람직하지 않다."
 TOPIC = "청소년의 스마트폰 사용 제한"
@@ -25,6 +25,11 @@ def test_example_sentence_patterns():
     assert example_sentence_reasons("주장과 근거의 연결을 설명해 보세요.") == []
 
 
+def test_concept_quotes_are_not_example_sentences():
+    text = "내 글은 '결과'에 초점을 맞추었다면, AI 참고 글은 '과정의 성찰'을 강조한다."
+    assert example_sentence_reasons(text) == []
+
+
 def test_quoting_learner_own_sentence_is_allowed():
     user = "내 동생은 밤새 게임을 하다가 성적이 떨어졌다."
     text = "'내 동생은 밤새 게임을 하다가 성적이 떨어졌다'는 하나의 사례에 그칩니다."
@@ -41,11 +46,10 @@ def test_question_rules():
 
 def test_resolve_evidence_drops_out_of_range_and_duplicates():
     refs = [
-        EvidenceRef(source="A", sentence_id=2, reason="r1"),
-        EvidenceRef(source="A", sentence_id=2, reason="중복"),
-        EvidenceRef(source="B", sentence_id=9, reason="범위 밖"),
-        EvidenceRef(source="B", sentence_id=1, reason="r2"),
+        SentenceRef(sentence_id=2, reason="r1"),
+        SentenceRef(sentence_id=2, reason="중복"),
+        SentenceRef(sentence_id=9, reason="범위 밖"),
+        SentenceRef(sentence_id=1, reason="r2"),
     ]
-    sents = {"A": ["a1", "a2"], "B": ["b1"]}
-    out = resolve_evidence(refs, sents, {"A": "user", "B": "ai"})
-    assert [(e.source, e.quote) for e in out] == [("user", "a2"), ("ai", "b1")]
+    out = resolve_evidence(refs, ["s1", "s2"], "user")
+    assert [(e.source, e.quote, e.reason) for e in out] == [("user", "s2", "r1"), ("user", "s1", "r2")]

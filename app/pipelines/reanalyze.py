@@ -59,12 +59,8 @@ async def review_action_items(
 
 async def run(ctx: Ctx, req: ReanalyzeRequest) -> ReanalysisResult:
     prev = {it.key: it for it in req.previous_result.items}
-    comp = await evaluate_items(ctx, req.topic, req.requirements, req.current_draft, req.ai_draft)
-
-    # AI 초안은 바뀌지 않으므로 다시 매긴 점수 대신 직전 점수를 쓴다 (노이즈 방지).
-    for it in comp.items:
-        if it.key in prev:
-            it.ai_score = prev[it.key].ai_score
+    # AI 초안은 바뀌지 않으므로 AI 글 점수·요약은 다시 매기지 않는다 (노이즈 방지, 호출 5회 절약).
+    comp = await evaluate_items(ctx, req.topic, req.requirements, req.current_draft, req.ai_draft, fixed_ai=prev)
 
     score_delta: dict[str, int] = {}
     if req.previous_result.prompt_version == ctx.prompts.version:
