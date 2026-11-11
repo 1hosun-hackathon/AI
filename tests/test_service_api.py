@@ -206,3 +206,40 @@ def test_missing_ai_writing_is_generated_first_and_reused_on_retry(client_factor
     assert len([c for c in llm.calls if c[1] is None]) == drafts_before  # 재시도 때 다시 만들지 않음
     res = client.get("/api/v1/analyses/30").json()
     assert res["aiWriting"]["content"].startswith("참고 초안")
+
+
+def _generated_ai_ok(responder):
+    """생성된 AI 글에는 고정 문구가 없으므로 비교 설명은 직접 응답한다."""
+
+    def respond(messages, schema):
+        if (schema or {}).get("title") == "CompareOutput":
+            return {"comparisons": [{"key": k, "comparison": "글 A는 경험에, B는 통계에 기댄다."} for k in CRITERIA]}
+        return responder(messages, schema)
+
+    return respond
+
+
+def test_ai_writing_is_prescored_for_the_draft_analysis(client_factory):
+    client, llm = client_factory(_generated_ai_ok(scripted()))
+    ai = client.post("/api/v1/trainings", json={**TASK, "trainingId": 12}).json()["aiWriting"]["content"]
+    deadline = time.time() + 5
+    while len(llm.calls_for("TextScoreOutput")) < len(CRITERIA) and time.time() < deadline:
+        time.sleep(0.02)
+    assert len(llm.calls_for("TextScoreOutput")) == len(CRITERIA)  # 2-1 직후 백그라운드로 AI 글 채점
+
+    r = client.post("/api/v1/trainings/12/draft", json={**TASK, "analysisId": 40, "content": USER, "aiWriting": {"content": ai}})
+    assert r.status_code == 202
+    assert _wait(client, 40)["status"] == "SUCCESS"
+    assert len(llm.calls_for("TextScoreOutput")) == len(CRITERIA)  # 분석 때 AI 글을 다시 채점하지 않음
+    assert len(llm.calls_for("TextScoreWithActionOutput")) == len(CRITERIA)
+    res = client.get("/api/v1/analyses/40").json()
+    assert all(1 <= s["aiScore"] <= 5 for s in res["scores"])  # 미리 채점한 점수(출처 없는 글은 근거 3점 상한)
+
+
+def test_item_prompt_puts_text_before_criterion(client_factory):
+    client, llm = client_factory(scripted())
+    _draft(client)
+    prompts = [c[0][1]["content"] for c in llm.calls_for("TextScoreWithActionOutput")]
+    # 같은 글의 항목별 프롬프트는 글 본문까지 앞부분이 같아야 모델이 앞부분 계산을 재사용한다
+    heads = {p.split("평가 항목:")[0] for p in prompts}
+    assert len(heads) == 1 and "[글]" in heads.pop()

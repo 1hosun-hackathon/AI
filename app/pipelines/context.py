@@ -1,4 +1,6 @@
+import asyncio
 import random
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from app.config import Settings
@@ -14,6 +16,8 @@ class Ctx:
     settings: Settings
     prompts: Prompts
     rng: random.Random = field(default_factory=random.Random)  # A/B 배정용
+    # AI 작성 글 채점 결과(미리 채점). 키는 analyze.ai_score_key, 값은 채점 task. 관리는 app.pipelines.analyze가 한다.
+    ai_scores: "OrderedDict[str, asyncio.Task]" = field(default_factory=OrderedDict)
 
     def meta(self) -> dict[str, str]:
         return {"prompt_version": self.prompts.version, "model": self.llm.model_name}

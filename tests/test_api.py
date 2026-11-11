@@ -128,7 +128,7 @@ def test_analyze_end_to_end(client_factory):
     assert item["comparison"] == "내 글은 경험에, AI 글은 통계에 기댄다."
     # 유도 질문은 규칙 검사에서 빠지고 열린 질문 3개만 남는다
     assert res["questions"] == GOOD_QUESTIONS
-    assert res["prompt_version"] == "v4" and res["model"] == "fake-llm"
+    assert res["prompt_version"] == "v5" and res["model"] == "fake-llm"
 
 
 def test_ghostwritten_action_item_is_retried_then_dropped(client_factory):
@@ -197,7 +197,8 @@ def test_reference_draft_retries_on_length(client_factory):
     r = client.post("/ai/reference-draft", json={"topic": TOPIC, "requirements": {"length": "800~1000자"}})
     body = r.json()
     assert r.status_code == 200 and 800 <= body["char_count"] <= 1000
-    assert body["warnings"] == [] and len(llm.calls) == 2
+    drafts = [c for c in llm.calls if c[1] is None]  # 백그라운드 AI 글 미리 채점 호출은 빼고 센다
+    assert body["warnings"] == [] and len(drafts) == 2
 
 
 def test_error_format(client_factory, settings):

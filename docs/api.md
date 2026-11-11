@@ -57,6 +57,7 @@ AI 서버는 훈련·글 버전을 저장하지 않으므로, 명세의 요청 �
 - 첨부파일은 형식·크기만 검사하고 AI 작성 글에는 반영하지 않는다. 허용 형식은 PDF·PPT(X)·DOC(X)·HWP(X)·TXT·MD·이미지(PNG, JPG, GIF, WEBP)다. 파일당 10MB, 5개까지 받는다.
 - 형식이 맞지 않으면 400 `FILE_TYPE_NOT_ALLOWED`, 크기나 개수를 넘으면 413 `FILE_TOO_LARGE`.
 - `startedAt`, `timerEndsAt`, `attachmentId`는 백엔드가 정하는 값이라 응답에 없다.
+- 응답을 보낸 뒤 AI 서버가 백그라운드에서 AI 작성 글을 미리 채점한다(항목 5개). 3-2에서 같은 주제·같은 AI 글이 오면 이 결과를 써서 분석 시간이 줄어든다. 따라서 3-2에는 2-1에서 받은 `aiWriting`을 고치지 말고 그대로 보낸다.
 
 ### 3-2 POST /api/v1/trainings/{trainingId}/draft
 
@@ -208,7 +209,7 @@ v2까지 쓰던 이름(논지, 근거, 구조, 표현, 독창성)에서 바뀌�
 - `state=done`: `result`에 분석 결과. `result.status`가 `partial`이면 일부 항목·필드가 빠진 것이고 사유는 `result.warnings`에 있다.
 - `state=failed`: `error`에 공통 에러 본문.
 - 완료된 job은 1시간 뒤 삭제된다. 서버가 재시작되면 진행 중인 job도 사라진다. `JOB_NOT_FOUND`를 받으면 같은 요청을 다시 보낸다.
-- 폴링 간격은 2~3초를 권장한다. 분석 1회는 개발 PC(RTX 2060) 기준 약 40초 걸린다.
+- 폴링 간격은 2~3초를 권장한다. 분석 1회는 개발 PC 기준 GPU(RTX 2060)에서 약 30~40초, GPU 없이 CPU(Ryzen 5 5600X)만 쓰면 약 2분 30초 걸린다(2-1 뒤 AI 글 미리 채점이 끝난 경우).
 
 ## 분석 결과에서 null이 될 수 있는 필드
 

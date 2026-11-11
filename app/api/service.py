@@ -256,6 +256,7 @@ async def create_training(request: Request, ctx: Ctx = Depends(get_ctx)):
     """2-1 훈련 생성: 과제 조건만으로 AI 작성 글을 만든다(동기, 수십 초). 첨부파일은 받기만 하고 글에 반영하지 않는다."""
     req, attachments = await _parse_training_create(request)
     res = await reference_draft.run(ctx, ReferenceDraftRequest(topic=req.topic, requirements=_requirements(req)))
+    analyze.prescore_ai(ctx, req.topic, res.draft)  # 학습자가 초안을 쓰는 동안 AI 글을 미리 채점
     return TrainingCreateResponse(
         trainingId=req.trainingId,
         aiWriting=AiWriting(content=res.draft),
