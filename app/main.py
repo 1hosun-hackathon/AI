@@ -17,7 +17,6 @@ from app.llm.ollama import OllamaProvider
 from app.pipelines.context import Ctx
 from app.prompts.loader import Prompts
 from app.schemas.analysis import AnalysisResult, ReanalysisResult
-from app.schemas.service import AnalysisReport
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("app")
@@ -67,12 +66,12 @@ def create_app(settings: Settings | None = None, llm: LLMProvider | None = None)
 
 
 def _openapi(app: FastAPI) -> dict:
-    """job 결과 형식(AnalysisResult, ReanalysisResult, AnalysisReport)을 명세 components에 넣는다."""
+    """job 결과 형식(AnalysisResult, ReanalysisResult)을 명세 components에 넣는다."""
     if app.openapi_schema:
         return app.openapi_schema
     schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
     _, defs = models_json_schema(
-        [(AnalysisResult, "serialization"), (ReanalysisResult, "serialization"), (AnalysisReport, "serialization")],
+        [(AnalysisResult, "serialization"), (ReanalysisResult, "serialization")],
         ref_template="#/components/schemas/{model}",
     )
     components = schema.setdefault("components", {}).setdefault("schemas", {})
