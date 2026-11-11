@@ -2362,6 +2362,18 @@
         "title": "TrainingCreateRequest",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
     }
-  }
+  },
+  "security": [
+    {
+      "ApiKey": []
+    }
+  ]
 }

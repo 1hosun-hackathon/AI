@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     llm_provider: Literal["ollama", "mock"] = "ollama"
     mock_delay_sec: float = 0.0  # 가짜 응답마다 기다릴 시간(폴링 화면 확인용)
 
+    # 공유 키. 설정하면 /health·문서 외 모든 요청에 X-API-Key 헤더가 이 값과 같아야 한다(외부 공개 시 필수).
+    api_key: str | None = None
+
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
     llm_model: str = "gemma4:e2b-it-qat"
