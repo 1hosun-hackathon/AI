@@ -53,7 +53,9 @@ powershell -ExecutionPolicy Bypass -File scripts\start_public.ps1
 - 모든 요청에 헤더 두 개를 넣는다.
   - `X-API-Key: <받은 키>`: 없거나 틀리면 401 `UNAUTHORIZED`
   - `ngrok-skip-browser-warning: true`: ngrok 주소일 때 경고 페이지(HTML) 대신 API 응답을 받게 한다
-- `/health`와 API 문서(`/docs`, `/openapi.json`)는 키 없이 열린다. `/docs`에서 Authorize 버튼에 키를 넣으면 바로 호출해 볼 수 있다.
+- `/health`만 키 없이 열린다(키가 없으면 `{"status": "ok"}`만, 키가 있으면 모델·프롬프트 버전까지).
+- API 문서는 저장소의 `docs/openapi.json`과 `docs/api.md`를 본다. 서버의 `/docs`는 외부 공개 시 닫혀 있다(`PUBLIC_DOCS=true`로 열 수 있다).
+- 보호 장치: IP별 분당 600회를 넘으면 429 `RATE_LIMITED`. 틀린 키를 10분 안에 10번 보내면 그 IP를 10분 차단(429). 요청 본문은 1MB(2-1 첨부파일 경로는 52MB)까지.
 - 호출 형식은 [api.md](api.md)의 "노션 API 명세 경로" 절을 따른다.
 - 요청 제한 시간: 2-1(AI 작성 글 생성)은 동기 호출로 최대 1분 이상 걸릴 수 있으니 클라이언트 타임아웃을 120초 이상으로 둔다. 분석은 비동기(202)이고 4-1을 2초 간격으로 폴링한다.
 
