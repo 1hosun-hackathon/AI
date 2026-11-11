@@ -1,4 +1,4 @@
-# AI 서버를 켜고 Cloudflare 빠른 터널로 외부 주소를 연다 (Windows PowerShell).
+﻿# AI 서버를 켜고 Cloudflare 빠른 터널로 외부 주소를 연다 (Windows PowerShell).
 # 사용: 저장소 루트에서  powershell -ExecutionPolicy Bypass -File scripts\start_public.ps1
 # 준비: Ollama 실행 중, .env에 API_KEY 설정, cloudflared 설치 (winget install --id Cloudflare.cloudflared)
 # 종료: 이 창에서 Ctrl+C (서버도 함께 종료된다)
