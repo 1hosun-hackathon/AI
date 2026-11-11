@@ -7,3 +7,6 @@ __pycache__/
 build/
 dist/
 outputs/
+
+# 로컬 작업 지침 (공유 저장소에 올리지 않음)
+CLAUDE.md
