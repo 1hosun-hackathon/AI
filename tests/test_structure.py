@@ -49,3 +49,43 @@ def test_headings_are_not_counted_as_paragraphs():
     facts = observe(paras)
     assert "문단 수: 2개" in facts
     assert "마지막 문단" in facts
+
+
+# ---------------------------------------------------------------- 근거와 출처, 논리 전개 관찰값
+from app.text.structure import observe_flow, observe_sources, source_kind  # noqa: E402
+
+
+def test_source_kinds():
+    assert source_kind("운영팀 통계에 따르면 사용량이 약 8% 줄었다.") == "source"
+    assert source_kind("자료로는 학과 설문 결과를 사용하였다.") == "source"
+    # 누가·언제 조사했는지 없는 출처
+    assert source_kind("연구에 따르면 대면 강의가 더 효과적이라고 한다.") == "vague"
+    assert source_kind("많은 학생들이 성적이 떨어졌다고 한다.") == "vague"
+    assert source_kind("효과적일 수 있다는 연구 결과들이 존재한다.") == "vague"
+    # "본 보고서는"은 출처가 아니다
+    assert source_kind("본 보고서는 구체적인 저감 방안을 제시하고자 한다.") is None
+
+
+def test_observe_sources_counts():
+    facts = observe_sources(split_paragraphs(GOOD))
+    # 설문 결과(2, 3번째)와 조사 범위를 밝힌 문장(6번째)
+    assert "밝힌 문장('설문', '통계', '~에 따르면' 등): 3개" in facts
+    assert "수치(숫자)가 들어간 문장: 1개" in facts
+    facts = observe_sources(split_paragraphs("연구에 따르면 효과가 있다고 한다. 그래서 늘려야 한다."))
+    assert "0개" in facts and "막연한 출처" in facts
+
+
+def test_observe_flow_detects_conclusion_before_data():
+    facts = observe_flow(split_paragraphs(GOOD))
+    assert "전체 8문장 중 7번째, 8번째" in facts
+    assert "새로 나오는 수치·자료 문장: 없음" in facts
+    # 결론을 먼저 쓰고 자료를 뒤에 붙인 글
+    late = "따라서 근무 시간을 줄여야 한다. 설문에서 주 15시간 이상 일하는 학생의 학점이 낮았다."
+    assert "다시 나온다: 2번째 문장" in observe_flow(split_paragraphs(late))
+
+
+def test_heading_numbers_are_not_data():
+    text = "본론 1: 실행 방안\n\n따라서 대여함을 늘려야 한다.\n\n본론 2: 지원 방안\n\n세척 시설을 확충해야 한다."
+    facts = observe_flow(split_paragraphs(text))
+    assert "새로 나오는 수치·자료 문장: 없음" in facts
+    assert "수치(숫자)가 들어간 문장: 0개" in observe_sources(split_paragraphs(text))

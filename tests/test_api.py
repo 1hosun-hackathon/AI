@@ -128,7 +128,7 @@ def test_analyze_end_to_end(client_factory):
     assert item["comparison"] == "내 글은 경험에, AI 글은 통계에 기댄다."
     # 유도 질문은 규칙 검사에서 빠지고 열린 질문 3개만 남는다
     assert res["questions"] == GOOD_QUESTIONS
-    assert res["prompt_version"] == "v3" and res["model"] == "fake-llm"
+    assert res["prompt_version"] == "v4" and res["model"] == "fake-llm"
 
 
 def test_ghostwritten_action_item_is_retried_then_dropped(client_factory):

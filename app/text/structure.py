@@ -63,3 +63,92 @@ def observe(paragraphs: list[list[str]]) -> str:
     if n_para == 1 and total >= 6:
         lines.append("- 문단을 나누지 않고 한 덩어리로 썼다")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------- 논리 전개: 결론·제안 문장과 자료 문장의 순서
+
+_CLOSING_START = re.compile(r"^(따라서|정리하면|결론적으로|요약하면|종합하면|이상을\s*정리하면|결국)")
+_CLOSING_END = re.compile(r"(필요가\s*있다|해야\s*한다|바람직하다)[.\s]*$")
+_DIGIT = re.compile(r"\d")
+
+# ---------------------------------------------------------------- 근거와 출처: 출처 표지
+
+_SOURCE = re.compile(
+    r"(에\s*따르면|설문|통계|면담|인터뷰|조사(했|한|를|에서|\s*결과)|보고서(에서|에\s*따르면)"
+    r"|자료(로는|에서|를\s*보면)|강의\s*자료|문헌|논문|기사|발표한|공개한|출처)"
+)
+# 누가·언제 조사했는지 없는 출처 ("연구에 따르면", "많은 학생들이 ~라고 한다")
+_VAGUE = re.compile(
+    r"(연구(에\s*따르면|\s*결과(들)?(가|이|에\s*따르면|도)|들은)|전문가들|많은\s*(사람|학생)들?(이|은)|(라고|다고)\s*한다)"
+)
+
+
+def is_closing(sentence: str) -> bool:
+    return bool(_CLOSING_START.search(sentence) or _CLOSING_END.search(sentence))
+
+
+def source_kind(sentence: str) -> str | None:
+    """'vague'(막연한 출처) | 'source'(출처·자료 제시) | None. 숫자가 있으면 막연하다고 보지 않는다."""
+    if _VAGUE.search(sentence) and not _DIGIT.search(sentence):
+        return "vague"
+    if _SOURCE.search(sentence):
+        return "source"
+    return None
+
+
+def _is_data(sentence: str) -> bool:
+    return bool(_DIGIT.search(sentence)) or source_kind(sentence) == "source"
+
+
+def _body_sentences(paragraphs: list[list[str]]) -> tuple[list[str], set[int]]:
+    """전체 문장(번호는 프롬프트와 같게 소제목 포함)과 소제목 문장 번호. '본론 1:'의 숫자를 수치로 세지 않기 위해."""
+    sentences = [s for para in paragraphs for s in para]
+    headings: set[int] = set()
+    i = 0
+    for para in paragraphs:
+        if is_heading(para):
+            headings.add(i + 1)
+        i += len(para)
+    return sentences, headings
+
+
+def observe_flow(paragraphs: list[list[str]]) -> str:
+    """결론·제안 문장 뒤에 수치·자료 문장이 다시 나오면 결론이 근거보다 먼저 나온 것이다."""
+    sentences, headings = _body_sentences(paragraphs)
+    total = len(sentences)
+    closing = [i for i, s in enumerate(sentences, 1) if i not in headings and is_closing(s)]
+    if not closing:
+        return "- 결론·제안 문장('따라서', '정리하면'으로 시작하거나 '필요가 있다', '해야 한다'로 끝남): 없음"
+    lines = [f"- 결론·제안 문장('따라서', '정리하면'으로 시작하거나 '필요가 있다', '해야 한다'로 끝남): 전체 {total}문장 중 {_fmt(closing[:4])}"]
+    after = [
+        i
+        for i in range(closing[0] + 1, total + 1)
+        if i not in closing and i not in headings and _is_data(sentences[i - 1])
+    ]
+    if after:
+        lines.append(f"- 첫 결론·제안 문장 뒤에 수치나 자료를 제시하는 문장이 다시 나온다: {_fmt(after[:4])} 문장")
+    else:
+        lines.append("- 첫 결론·제안 문장 뒤에 새로 나오는 수치·자료 문장: 없음")
+    return "\n".join(lines)
+
+
+def observe_sources(paragraphs: list[list[str]]) -> str:
+    sentences, headings = _body_sentences(paragraphs)
+    if not sentences:
+        return ""
+    kinds = [None if i in headings else source_kind(s) for i, s in enumerate(sentences, 1)]
+    src = [i for i, k in enumerate(kinds, 1) if k == "source"]
+    vague = [i for i, k in enumerate(kinds, 1) if k == "vague"]
+    nums = [i for i, s in enumerate(sentences, 1) if i not in headings and _DIGIT.search(s)]
+    total = len(sentences)
+    lines = [
+        f"- 출처나 자료를 얻은 방법을 밝힌 문장('설문', '통계', '~에 따르면' 등): {len(src)}개"
+        + (f" ({_fmt(src[:5])})" if src else "")
+        + f" / 전체 {total}문장",
+        f"- 수치(숫자)가 들어간 문장: {len(nums)}개",
+    ]
+    if vague:
+        lines.append(
+            f"- 누가·언제 조사했는지 없는 막연한 출처('연구에 따르면', '~라고 한다' 등): {len(vague)}개 ({_fmt(vague[:5])})"
+        )
+    return "\n".join(lines)

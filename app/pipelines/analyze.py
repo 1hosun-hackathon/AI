@@ -14,7 +14,7 @@ from app.errors import AppError
 from app.guardrails.citation import resolve_evidence
 from app.guardrails.ghostwriting import ghostwriting_issues
 from app.guardrails.neutrality import content_shift_reasons, one_sided_question
-from app.guardrails.questions import rule_check_question
+from app.guardrails.questions import normalize_question, rule_check_question
 from app.llm.base import LLMError, Message
 from app.llm.outputs import (
     CompareOutput,
@@ -29,7 +29,7 @@ from app.schemas.analysis import AnalysisResult, AnalyzeRequest, Evidence, ItemR
 from app.schemas.common import CRITERIA, CRITERIA_INFO, Requirements
 from app.text.labels import relabel
 from app.text.sentences import numbered_paragraphs, split_paragraphs
-from app.text.structure import observe
+from app.text.structure import observe, observe_flow, observe_sources
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +97,16 @@ def _retry_note(ctx: Ctx, problems: list[str]) -> Message:
 # ---------------------------------------------------------------- 1. 항목 채점
 
 
-# 구조 관찰값을 넣어 줄 항목: 목적 문장 위치(목적·주제 설정), 문단·순서(구성), 결론 위치(논리 전개)
-STRUCTURE_KEYS = ("thesis", "structure", "originality")
+def _observations(key: str, paragraphs: list[list[str]]) -> str | None:
+    """항목별로 서버가 센 사실. 목적 문장 위치(목적·주제 설정), 문단·순서(구성),
+    결론·제안 문장과 자료 문장의 순서(논리 전개), 출처 표지 수(근거와 출처)."""
+    if key in ("thesis", "structure"):
+        return observe(paragraphs)
+    if key == "originality":
+        return observe(paragraphs) + "\n" + observe_flow(paragraphs)
+    if key == "evidence":
+        return observe_sources(paragraphs)
+    return None
 
 
 async def _score_text(
@@ -107,9 +115,8 @@ async def _score_text(
     """글 한 편을 항목 하나로 채점. with_action이면 보완 방향도 받고 대필 검사 후 재생성한다."""
     s = ctx.settings
     name, desc = CRITERIA_INFO[key]
-    observations = ""
-    if key in STRUCTURE_KEYS:
-        observations = ctx.prompts.render("observations", facts=observe(paragraphs))
+    facts = _observations(key, paragraphs)
+    observations = ctx.prompts.render("observations", facts=facts) if facts else ""
     msgs: list[Message] = [
         _system(ctx),
         {
@@ -289,8 +296,8 @@ def _theses(items: list[ItemResult]) -> tuple[str, str]:
 
 async def _judge(
     ctx: Ctx, topic: str, theses: tuple[str, str], entries: list[tuple[str, str]], warnings: list[str]
-) -> list[str]:
-    """피드백 문장 판정: ok | stance_shift | leading. 실패하면 모두 ok로 보고 경고만 남긴다."""
+) -> list[tuple[str, str]]:
+    """피드백 문장 판정: (ok | stance_shift | leading, 사유). 실패하면 모두 ok로 보고 경고만 남긴다."""
     if not entries:
         return []
     kinds = {"action": "보완 방향", "improvement": "보완할 점", "question": "질문"}
@@ -309,9 +316,9 @@ async def _judge(
     except LLMError as e:
         logger.warning("피드백 판정 실패: %r", e)
         warnings.append("피드백 판정(입장 변경·유도 질문)을 건너뛰었습니다.")
-        return ["ok"] * len(entries)
-    verdicts = {v.index: v.verdict for v in out.verdicts}
-    return [verdicts.get(i, "ok") for i in range(len(entries))]
+        return [("ok", "")] * len(entries)
+    verdicts = {v.index: (v.verdict, v.reason) for v in out.verdicts}
+    return [verdicts.get(i, ("ok", "")) for i in range(len(entries))]
 
 
 _REASON = {"stance_shift": "결론·관점을 바꾸라고 권함", "leading": "답을 유도하는 질문"}
@@ -351,7 +358,7 @@ async def _filter_feedback(
             improvements.append(text)
 
     questions = []
-    for q in out.questions:
+    for q in map(normalize_question, out.questions):
         reason = check.question(q)
         if reason:
             problems.append(f"질문 '{q[:20]}…': {reason}")
@@ -370,19 +377,21 @@ async def _filter_feedback(
     v_improvements = verdicts[len(actions) : len(actions) + len(improvements)]
     v_questions = verdicts[len(actions) + len(improvements) :]
 
-    for it, v in zip(actions, v_actions):
+    for it, (v, why) in zip(actions, v_actions):
         if v == "stance_shift":
-            fb.warnings.append(f"{CRITERIA_INFO[it.key][0]}: 보완 방향 제외 ({_REASON[v]})")
+            fb.warnings.append(f"{CRITERIA_INFO[it.key][0]}: 보완 방향 제외 ({_REASON[v]}: {why})")
             it.action_item = None
-    for text, v in zip(improvements, v_improvements):
+    for text, (v, why) in zip(improvements, v_improvements):
         if v == "stance_shift":
-            problems.append(f"보완할 점 '{text[:20]}…': {_REASON[v]}")
+            problems.append(f"보완할 점 '{text[:20]}…': {_REASON[v]} ({why})")
         else:
             fb.improvements.append(text)
     open_qs = []
-    for q, v in zip(questions, v_questions):
+    for q, (v, why) in zip(questions, v_questions):
+        # 개선 방향을 정해 주는 질문은 위 규칙 검사가 잡는다. 판정은 결론·내용을 전제하는 질문만 걸러낸다.
         if v in _REASON:
-            problems.append(f"질문 '{q[:20]}…': {_REASON[v]}")
+            logger.info("질문 제외 (%s): %s / %s", v, q, why)
+            problems.append(f"질문 '{q[:20]}…': {_REASON[v]} ({why})")
         else:
             open_qs.append(q)
     fb.questions = open_qs[:3]
