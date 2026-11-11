@@ -243,6 +243,8 @@ v2까지 쓰던 이름(논지, 근거, 구조, 표현, 독창성)에서 바뀌�
 | `JOB_NOT_FOUND` | 404 | true | job 없음 (만료·재시작). 같은 요청 재전송 |
 | `QUEUE_FULL` | 429 | true | 대기 중인 분석이 너무 많음 |
 | `INTERNAL` | 500 | true | 그 밖의 서버 오류 |
+| `UNAUTHORIZED` | 401 | false | `X-API-Key` 헤더가 없거나 틀림 (`API_KEY` 설정 시) |
+| `RATE_LIMITED` | 429 | true | 요청이 너무 많음, 또는 틀린 키 반복으로 잠시 차단 |
 
 ## 요청·응답 예시
 

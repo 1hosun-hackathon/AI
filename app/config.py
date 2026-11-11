@@ -12,6 +12,13 @@ class Settings(BaseSettings):
 
     # 공유 키. 설정하면 /health·문서 외 모든 요청에 X-API-Key 헤더가 이 값과 같아야 한다(외부 공개 시 필수).
     api_key: str | None = None
+    public_docs: bool = False  # True면 키 없이도 /docs·/openapi.json을 연다(API_KEY가 없으면 항상 열림)
+    rate_limit_per_min: int = 600  # IP별 분당 요청 수 (백엔드 서버 1대가 모든 사용자 요청을 보낸다는 전제)
+    auth_fail_limit: int = 10  # 이 횟수만큼 틀린 키를 보내면
+    auth_fail_window_sec: int = 600  # (이 시간 안에)
+    auth_block_sec: int = 600  # 이 시간 동안 그 IP를 차단
+    max_body_bytes: int = 1_000_000  # 일반 요청 본문 최대 크기
+    max_upload_bytes: int = 52_000_000  # 첨부파일 경로(2-1) 본문 최대 크기 (10MB × 5 + 여유)
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
