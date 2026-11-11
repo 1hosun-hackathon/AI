@@ -1,26 +1,15 @@
 """테스트용 가짜 LLM. 응답은 responder(messages, schema)가 정한다."""
 
 import json
-import zlib
 from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 
-from app.text.sentences import compact
+from app.llm.mock import DIM, bigram_vector
 
-DIM = 512
 Responder = Callable[[list[dict], dict | None], Any]
-
-
-def bigram_vector(text: str) -> np.ndarray:
-    """글자 bigram 해시 벡터. 같은 문장이면 유사도 1, 다른 문장이면 낮게 나온다."""
-    t = compact(text)
-    v = np.zeros(DIM, dtype=np.float32)
-    for i in range(len(t) - 1):
-        v[zlib.crc32(t[i : i + 2].encode("utf-8")) % DIM] += 1.0
-    n = np.linalg.norm(v)
-    return v / n if n else v
+__all__ = ["DIM", "FakeProvider", "bigram_vector"]
 
 
 class FakeProvider:

@@ -6,6 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # LLM 제공자. mock이면 Ollama 없이 고정 형식의 가짜 응답을 낸다(연동 개발용).
+    llm_provider: Literal["ollama", "mock"] = "ollama"
+    mock_delay_sec: float = 0.0  # 가짜 응답마다 기다릴 시간(폴링 화면 확인용)
+
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
     llm_model: str = "gemma4:e2b-it-qat"
