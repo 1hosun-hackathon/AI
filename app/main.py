@@ -8,6 +8,7 @@ from pydantic.json_schema import models_json_schema
 
 from app.api.errors import register_error_handlers
 from app.api.routes import router
+from app.api.service import router as service_router
 from app.config import Settings
 from app.jobs.store import InMemoryJobStore
 from app.llm.base import LLMProvider
@@ -16,6 +17,7 @@ from app.llm.ollama import OllamaProvider
 from app.pipelines.context import Ctx
 from app.prompts.loader import Prompts
 from app.schemas.analysis import AnalysisResult, ReanalysisResult
+from app.schemas.service import AnalysisReport
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("app")
@@ -59,17 +61,18 @@ def create_app(settings: Settings | None = None, llm: LLMProvider | None = None)
     app = FastAPI(title="글적글적 AI 서버", version="0.1.0", lifespan=lifespan)
     register_error_handlers(app)
     app.include_router(router)
+    app.include_router(service_router)
     app.openapi = lambda: _openapi(app)
     return app
 
 
 def _openapi(app: FastAPI) -> dict:
-    """job 결과 형식(AnalysisResult, ReanalysisResult)을 명세 components에 넣는다."""
+    """job 결과 형식(AnalysisResult, ReanalysisResult, AnalysisReport)을 명세 components에 넣는다."""
     if app.openapi_schema:
         return app.openapi_schema
     schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
     _, defs = models_json_schema(
-        [(AnalysisResult, "serialization"), (ReanalysisResult, "serialization")],
+        [(AnalysisResult, "serialization"), (ReanalysisResult, "serialization"), (AnalysisReport, "serialization")],
         ref_template="#/components/schemas/{model}",
     )
     components = schema.setdefault("components", {}).setdefault("schemas", {})
