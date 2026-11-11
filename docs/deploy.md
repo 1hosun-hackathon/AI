@@ -2,7 +2,7 @@
 
 AI 서버와 모델(Ollama)은 GPU가 있는 개발 PC에서 돌리고, 터널로 외부 주소를 연다. 비용이 들지 않고, 백엔드가 다른 네트워크(시연장 와이파이 등)에 있어도 인터넷만 되면 호출할 수 있다.
 
-## 기본: ngrok 고정 주소 + 자동 시작
+## ngrok 고정 주소 + 자동 시작
 
 ngrok 무료 계정의 고정 도메인을 쓰므로 PC를 다시 켜도 주소가 바뀌지 않는다. 로그인하면 작업 스케줄러가 서버와 터널을 창 없이 켜고, 둘 중 하나가 꺼지면 30초 안에 다시 켠다.
 
@@ -22,24 +22,8 @@ ngrok 무료 계정의 고정 도메인을 쓰므로 PC를 다시 켜도 주소�
 - 상태 확인: `curl https://<도메인>/health` → `"llm": "up"`이면 정상
 - 끄기/켜기: `Stop-ScheduledTask -TaskName GeuljeokAI` / `Start-ScheduledTask -TaskName GeuljeokAI`
 - 자동 시작 해제: `powershell -ExecutionPolicy Bypass -File scripts\install_autostart.ps1 -Remove`
-- 로그: `logs\server.log`(AI 서버), `logs
-grok.log`, `logs\watchdog.log`(재시작 기록)
+- 로그: `logs\server.log`(AI 서버), `logs\ngrok.log`, `logs\watchdog.log`(재시작 기록)
 - 무료 ngrok은 월 1GB 전송 한도가 있다(분석 1회 수십 KB). 브라우저로 열면 경고 페이지가 먼저 뜨고, 그 페이지에 PC의 공인 IP가 표시된다.
-
-## 대안: Cloudflare 빠른 터널 (계정 불필요, 주소가 매번 바뀜)
-
-위 "처음 한 번"의 1·2·4(`API_KEY`만)·6번을 한 뒤, cloudflared를 설치한다: `winget install --id Cloudflare.cloudflared`
-
-켤 때마다:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\start_public.ps1
-```
-
-- 창에 `https://<임의 이름>.trycloudflare.com` 주소가 나온다. 이 주소를 백엔드에 전달한다.
-- **빠른 터널 주소는 켤 때마다 바뀐다.** 껐다 켜면 새 주소를 다시 알려 준다.
-- 끌 때는 그 창에서 Ctrl+C.
-- 상태 확인: 브라우저에서 `https://<주소>/health` → `"llm": "up"`이면 정상.
 
 ## 주의
 
