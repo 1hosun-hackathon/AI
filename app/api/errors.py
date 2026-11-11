@@ -25,7 +25,9 @@ def register_error_handlers(app: FastAPI) -> None:
         return _respond(AppError(e.code, detail=str(e)))
 
     @app.exception_handler(RequestValidationError)
-    async def _validation(_: Request, e: RequestValidationError) -> JSONResponse:
+    async def _validation(request: Request, e: RequestValidationError) -> JSONResponse:
         fields = sorted({str(err["loc"][-1]) for err in e.errors() if err.get("loc")})
         msg = f"입력값을 확인해 주세요: {', '.join(fields)}" if fields else None
-        return _respond(AppError("INVALID_INPUT", message=msg))
+        # 노션 API 명세 경로는 명세의 400 VALIDATION_ERROR, 기존 /ai 경로는 422 INVALID_INPUT
+        code = "VALIDATION_ERROR" if request.url.path.startswith("/api/v1/") else "INVALID_INPUT"
+        return _respond(AppError(code, message=msg))

@@ -45,12 +45,21 @@ class AiWriting(BaseModel):
 
 
 class TrainingCreateRequest(Task):
+    """multipart/form-data의 request 파트(JSON). files 파트는 받기만 하고 AI 작성 글에는 쓰지 않는다."""
+
     trainingId: int | None = None
+    timerMinutes: int | None = None
+
+
+class Attachment(BaseModel):
+    fileName: str
+    fileSize: int
 
 
 class TrainingCreateResponse(BaseModel):
     trainingId: int | None
     aiWriting: AiWriting = Field(description="4-2 aiWriting으로 저장할 AI 작성 글")
+    attachments: list[Attachment] = Field([], description="받은 첨부파일 (AI 작성 글에는 반영하지 않음)")
     charCount: int
     warnings: list[str] = []
     promptVersion: str
@@ -63,8 +72,10 @@ class TrainingCreateResponse(BaseModel):
 class DraftSubmitRequest(Task):
     analysisId: int = Field(description="백엔드가 만든 comparison_analysis ID")
     versionId: int | None = None
-    content: str = Field(description="제출한 초안")
-    aiWriting: AiWriting
+    content: str = Field(description="제출한 글")
+    aiWriting: AiWriting | None = Field(
+        None, description="AI 작성 글. 없거나 비어 있으면(2-1 생성 실패) 분석 전에 먼저 생성하고 4-2 aiWriting으로 돌려준다"
+    )
 
 
 class RevisionSubmitRequest(DraftSubmitRequest):
@@ -112,7 +123,12 @@ class AnalysisItem(BaseModel):
     aiSummary: str
     comparison: str
     reflectPoint: str | None = Field(None, description="보완 방향. 대필 검사를 통과하지 못하면 null")
-    # 아래는 명세 화면 응답에는 없는 필드. 백엔드가 저장해 대시보드 집계와 다시 검사에 쓴다.
+
+
+class CriterionScore(BaseModel):
+    """명세 4-2 화면 응답에는 넣지 않는 점수. 백엔드가 저장해 대시보드 집계와 다시 검사에 쓴다."""
+
+    criterion: Criterion
     userScore: int = Field(ge=1, le=5)
     aiScore: int = Field(ge=1, le=5)
     better: Literal["user", "ai", "tie"]
@@ -144,7 +160,8 @@ class ComparisonAnalysis(BaseModel):
     improvements: str = Field(description="여러 개면 줄바꿈으로 구분")
     items: list[AnalysisItem] = Field(description="THESIS, EVIDENCE, STRUCTURE, EXPRESSION, ORIGINALITY 순서")
     questions: list[Question]
-    # 명세에 없는 추가 필드
+    # 명세에 없는 추가 필드. 화면 응답에서는 빼고 백엔드가 저장한다.
+    scores: list[CriterionScore] = Field(description="항목별 점수 (items와 같은 순서)")
     reflectionReviews: list[ReflectionReview] = []
     scoreDelta: dict[Criterion, int] = {}
     partial: bool = False
@@ -161,6 +178,7 @@ RevisionSubmitRequest.model_rebuild()
 
 class CompleteRequest(BaseModel):
     content: str = Field(description="최종 글")
+    finalVersionId: int | None = None
     draft: Writing = Field(description="최초 초안(seqNo 0)")
     aiWriting: AiWriting
 
@@ -175,9 +193,21 @@ class RatioSentence(BaseModel):
 class CompleteResponse(BaseModel):
     trainingId: int
     status: Literal["COMPLETED"] = "COMPLETED"
+    finalVersionId: int | None
+    completedAt: str
     selfThoughtRatio: float = Field(description="0~100, 소수 첫째 자리")
     aiDependencyRatio: float = Field(description="0~100. selfThoughtRatio와 합이 100")
     sentences: list[RatioSentence]
     method: str
     promptVersion: str
     model: str
+
+
+# 4-3 회차별 분석 목록
+
+
+class AnalysisSummary(BaseModel):
+    analysisId: int
+    seqNo: int
+    status: AnalysisStatus
+    createdAt: str

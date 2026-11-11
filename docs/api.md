@@ -29,34 +29,46 @@ AI 서버는 훈련·글 버전을 저장하지 않으므로, 명세의 요청 �
 
 | ID | 경로 | 방식 | AI 서버가 하는 일 |
 |---|---|---|---|
-| 2-1 | `POST /api/v1/trainings` | 동기 (수십 초) | AI 작성 글 생성. 4-4에서 AI 글 생성이 실패했을 때도 다시 호출 |
+| 2-1 | `POST /api/v1/trainings` | 동기 (수십 초) | AI 작성 글 생성. 첨부파일은 받기만 함 |
 | 3-2 | `POST /api/v1/trainings/{trainingId}/draft` | 비동기 (202) | 초안 비교 분석 시작 |
 | 3-4 | `POST /api/v1/trainings/{trainingId}/revisions` | 비동기 (202) | 수정본 재분석 + 지난 `reflectPoint` 반영 여부 |
 | 3-5 | `POST /api/v1/trainings/{trainingId}/complete` | 동기, LLM 미사용 | 자기 사고 비율·AI 의존도(%) |
 | 4-1 | `GET /api/v1/analyses/{analysisId}/status` | 동기, 2초 폴링 | 분석 상태 |
 | 4-2 | `GET /api/v1/analyses/{analysisId}` | 동기 | 비교 분석 결과 |
-| 4-4 | `POST /api/v1/analyses/{analysisId}/retry` | 비동기 (202) | 실패한 분석을 같은 입력으로 다시 실행 |
+| 4-3 | `GET /api/v1/trainings/{trainingId}/analyses` | 동기 | 회차별 분석 목록 |
+| 4-4 | `POST /api/v1/analyses/{analysisId}/retry` | 비동기 (202) | 실패한 분석을 같은 입력으로 다시 실행. AI 작성 글이 없던 분석은 그것부터 생성 |
 
-과제 조건 `{ "topic", "writingType", "requirements" }`는 2-1, 3-2, 3-4 요청에 training 값을 그대로 넣는다. `requirements` 문자열 안의 "800~1,000자", "1000자 이내", "500자 이상"을 분량으로 해석하고, 나머지 조건도 모델에 전달한다. 첨부파일은 받지 않는다.
+과제 조건 `{ "topic", "writingType", "requirements" }`는 2-1, 3-2, 3-4 요청에 training 값을 그대로 넣는다. `requirements` 문자열 안의 "800~1,000자", "1000자 이내", "500자 이상"을 분량으로 해석하고, 나머지 조건도 모델에 전달한다.
 
 ### 2-1 POST /api/v1/trainings
 
+명세대로 `multipart/form-data`로 보낸다. `request` 파트(JSON)와 `files` 파트(0개 이상)로 구성하고, JSON 본문만 보내도 된다.
+
 ```json
-// 요청
-{ "trainingId": 12, "topic": "기후변화와 탄소 중립 정책의 실효성", "writingType": "논설문", "requirements": "800~1,000자, 근거 2개 이상" }
+// request 파트
+{ "trainingId": 12, "topic": "기후변화와 탄소 중립 정책의 실효성", "writingType": "논설문",
+  "requirements": "800~1,000자, 근거 2개 이상", "timerMinutes": 15 }
 // 201 응답: aiWriting을 저장
-{ "trainingId": 12, "aiWriting": { "content": "..." }, "charCount": 930, "warnings": [], "promptVersion": "v4", "model": "gemma4:e2b-it-qat" }
+{ "trainingId": 12, "aiWriting": { "content": "..." },
+  "attachments": [ { "fileName": "IPCC_요약.pdf", "fileSize": 482113 } ],
+  "charCount": 930, "warnings": [], "promptVersion": "v4", "model": "gemma4:e2b-it-qat" }
 ```
+
+- 첨부파일은 형식·크기만 검사하고 AI 작성 글에는 반영하지 않는다. 허용 형식은 PDF·PPT(X)·DOC(X)·HWP(X)·TXT·MD·이미지(PNG, JPG, GIF, WEBP)다. 파일당 10MB, 5개까지 받는다.
+- 형식이 맞지 않으면 400 `FILE_TYPE_NOT_ALLOWED`, 크기나 개수를 넘으면 413 `FILE_TOO_LARGE`.
+- `startedAt`, `timerEndsAt`, `attachmentId`는 백엔드가 정하는 값이라 응답에 없다.
 
 ### 3-2 POST /api/v1/trainings/{trainingId}/draft
 
 ```json
-// 요청: 명세 본문 { content } + 과제 조건, analysisId, versionId, aiWriting
+// 요청: 명세 본문 { content } + 과제 조건, analysisId, versionId, aiWriting(선택)
 { "topic": "...", "writingType": "논설문", "requirements": "...",
   "analysisId": 20, "versionId": 30, "content": "초안", "aiWriting": { "content": "AI 작성 글" } }
 // 202 응답
 { "versionId": 30, "seqNo": 0, "analysisId": 20, "status": "ANALYZING" }
 ```
+
+`aiWriting`이 없거나 비어 있으면(2-1 생성 실패) 분석 job이 AI 작성 글을 먼저 만든다. 만든 글은 4-2 `aiWriting`으로 돌려주므로 백엔드가 저장한다.
 
 ### 3-4 POST /api/v1/trainings/{trainingId}/revisions
 
@@ -69,15 +81,16 @@ AI 서버는 훈련·글 버전을 저장하지 않으므로, 명세의 요청 �
 { "versionId": 31, "seqNo": 1, "analysisId": 21, "status": "ANALYZING" }
 ```
 
-`content`가 `previousResult.myWriting.content`와 같으면 409 `NO_CHANGES`.
+- `content`가 `previousResult.myWriting.content`와 같으면 409 `NO_CHANGES`.
+- `aiWriting`을 빼면 `previousResult.aiWriting`을 재사용한다(명세: "AI 작성 글은 재사용").
 
 ### 3-5 POST /api/v1/trainings/{trainingId}/complete
 
 ```json
 // 요청: 명세 본문 { content } + 최초 초안, AI 작성 글
-{ "content": "최종 글", "draft": { "versionId": 30, "content": "최초 초안" }, "aiWriting": { "content": "..." } }
+{ "content": "최종 글", "finalVersionId": 32, "draft": { "versionId": 30, "content": "최초 초안" }, "aiWriting": { "content": "..." } }
 // 200 응답: 비율은 0~100 (소수 첫째 자리), 둘의 합은 100
-{ "trainingId": 12, "status": "COMPLETED", "selfThoughtRatio": 71.0, "aiDependencyRatio": 29.0,
+{ "trainingId": 12, "status": "COMPLETED", "finalVersionId": 32, "completedAt": "2026-11-11T21:30:00+09:00", "selfThoughtRatio": 71.0, "aiDependencyRatio": 29.0,
   "sentences": [ { "text": "...", "label": "kept | new | ai_similar", "simUser": 0.82, "simAi": 0.41 } ],
   "method": "산정 기준 설명", "promptVersion": "v4", "model": "bge-m3" }
 ```
@@ -102,11 +115,12 @@ AI 서버는 훈련·글 버전을 저장하지 않으므로, 명세의 요청 �
   "improvements": "보완할 점 (여러 개면 줄바꿈으로 구분)",
   "items": [
     { "criterion": "THESIS", "label": "논지", "description": "핵심 주장과 관점",
-      "userSummary": "...", "aiSummary": "...", "comparison": "...", "reflectPoint": "보완 방향 | null",
-      "userScore": 3, "aiScore": 4, "better": "user | ai | tie",
-      "evidence": [ { "source": "user | ai", "quote": "원문 문장", "reason": "..." } ] }
+      "userSummary": "...", "aiSummary": "...", "comparison": "...", "reflectPoint": "보완 방향 | null" }
   ],
   "questions": [ { "seqNo": 1, "content": "스스로 점검하는 질문" } ],
+  // 여기부터 명세에 없는 필드
+  "scores": [ { "criterion": "THESIS", "userScore": 3, "aiScore": 4, "better": "user | ai | tie",
+                "evidence": [ { "source": "user | ai", "quote": "원문 문장", "reason": "..." } ] } ],
   "reflectionReviews": [ { "criterion": "THESIS", "reflectPoint": "...", "reflected": "yes | partial | no", "reason": "..." } ],
   "scoreDelta": { "THESIS": 1 },
   "partial": false, "warnings": [], "promptVersion": "v4", "model": "gemma4:e2b-it-qat"
@@ -115,8 +129,18 @@ AI 서버는 훈련·글 버전을 저장하지 않으므로, 명세의 요청 �
 
 - SUCCESS 전에는 409 `ANALYSIS_NOT_READY`.
 - `items`는 THESIS(논지), EVIDENCE(근거), STRUCTURE(구조), EXPRESSION(표현), ORIGINALITY(독창성) 순서로 5개다.
-- 명세에 없는 필드(`userScore`, `aiScore`, `better`, `evidence`, `reflectionReviews`, `scoreDelta`, `partial`, `warnings`, `promptVersion`, `model`)는 화면 응답에서 빼도 되지만 응답 전체를 저장해 둔다. 대시보드(`mostImproved`, `focusArea`)는 `userScore`로 계산하고, 다시 검사할 때 `previousResult`로 그대로 보낸다.
+- `items`는 명세 필드만 담는다. 점수는 명세대로 화면 응답에 넣지 않도록 `scores`로 분리했다.
+- 명세에 없는 필드(`scores`, `reflectionReviews`, `scoreDelta`, `partial`, `warnings`, `promptVersion`, `model`)는 화면 응답에서 빼고, 응답 전체는 저장해 둔다. 대시보드(`mostImproved`, `focusArea`)는 `scores[].userScore`로 계산한다. 다시 검사할 때는 응답 전체를 `previousResult`로 그대로 보낸다.
 - 결과는 AI 서버 메모리에 `JOB_TTL_SEC`(기본 1시간) 동안만 남는다. SUCCESS를 받으면 바로 가져가 저장한다.
+
+### 4-3 GET /api/v1/trainings/{trainingId}/analyses
+
+```json
+[ { "analysisId": 20, "seqNo": 0, "status": "SUCCESS", "createdAt": "..." },
+  { "analysisId": 21, "seqNo": 1, "status": "SUCCESS", "createdAt": "..." } ]
+```
+
+`seqNo` 오름차순이다. AI 서버 메모리에 남아 있는 분석(완료 후 1시간)만 나오므로, 오래된 회차는 백엔드 DB를 기준으로 한다.
 
 ### 4-4 POST /api/v1/analyses/{analysisId}/retry
 
@@ -125,19 +149,22 @@ AI 서버는 훈련·글 버전을 저장하지 않으므로, 명세의 요청 �
 { "analysisId": 21, "status": "PENDING" }
 ```
 
-FAILED인 분석만 가능하다(그 외 409 `ANALYSIS_NOT_FAILED`). AI 서버가 재시작돼 분석을 잊었으면 404 `ANALYSIS_NOT_FOUND`이므로 3-2/3-4를 같은 `analysisId`로 다시 보낸다.
+FAILED인 분석만 가능하다(그 외 409 `ANALYSIS_NOT_FAILED`). 3-2/3-4에서 `aiWriting` 없이 시작한 분석이면 AI 작성 글부터 다시 만든다. 이미 만든 글이 있으면 그 글을 다시 쓴다. AI 서버가 재시작돼 분석을 잊었으면 404 `ANALYSIS_NOT_FOUND`이므로 3-2/3-4를 같은 `analysisId`로 다시 보낸다.
 
 ### 이 경로에서 추가로 쓰는 에러 코드
 
 | code | HTTP | retryable | 의미 |
 |---|---|---|---|
+| `VALIDATION_ERROR` | 400 | false | 필수 필드 누락, 형식 오류 |
 | `EMPTY_CONTENT` | 400 | false | 글 내용이 비어 있음 |
+| `FILE_TYPE_NOT_ALLOWED` | 400 | false | 허용하지 않는 첨부파일 형식 |
+| `FILE_TOO_LARGE` | 413 | false | 첨부파일 10MB 초과 또는 5개 초과 |
 | `NO_CHANGES` | 409 | false | 직전 제출본과 같음 |
 | `ANALYSIS_NOT_FOUND` | 404 | true | 분석 없음 (만료·재시작) |
 | `ANALYSIS_NOT_READY` | 409 | true | 분석이 아직 끝나지 않음 |
 | `ANALYSIS_NOT_FAILED` | 409 | false | 실패하지 않은 분석은 재시도 불가 |
 
-필수 필드 누락 같은 형식 오류는 공통 `INVALID_INPUT`(422)이다. 에러 본문 형식은 아래 [에러](#에러)와 같다.
+`/api/v1` 경로의 형식 오류는 명세대로 400 `VALIDATION_ERROR`다. 기존 `/ai` 경로는 422 `INVALID_INPUT` 그대로다. 에러 본문 형식은 아래 [에러](#에러)와 같다.
 
 ## 엔드포인트
 

@@ -1,5 +1,6 @@
 """노션 API 명세 경로(/api/v1) 엔드포인트."""
 
+import json
 import time
 
 from app.llm.base import LLMUnavailable
@@ -52,8 +53,13 @@ def test_draft_analysis_matches_spec(client_factory):
     assert res["baseline"] is None and res["partial"] is False, res["warnings"]
     assert [it["criterion"] for it in res["items"]] == UPPER
     assert [(it["label"], it["description"]) for it in res["items"][:2]] == [("논지", "핵심 주장과 관점"), ("근거", "자료와 사례의 활용")]
-    item = res["items"][0]
-    assert (item["userScore"], item["aiScore"]) == (3, 4) and item["reflectPoint"]
+    # items는 명세 필드만, 점수는 scores에 따로
+    assert set(res["items"][0]) == {
+        "criterion", "label", "description", "userSummary", "aiSummary", "comparison", "reflectPoint"
+    }  # fmt: skip
+    assert res["items"][0]["reflectPoint"]
+    assert [s["criterion"] for s in res["scores"]] == UPPER
+    assert (res["scores"][0]["userScore"], res["scores"][0]["aiScore"], res["scores"][0]["better"]) == (3, 4, "ai")
     assert isinstance(res["strengths"], str) and isinstance(res["improvements"], str)
     assert res["questions"] == [{"seqNo": i, "content": q} for i, q in enumerate(GOOD_QUESTIONS, 1)]
 
@@ -62,8 +68,8 @@ def test_revision_uses_previous_result(client_factory):
     client, _ = client_factory(scripted())
     _draft(client)
     prev = client.get("/api/v1/analyses/20").json()
-    for it in prev["items"]:
-        it["userScore"] = 2
+    for sc in prev["scores"]:
+        sc["userScore"] = 2
     body = {
         **TASK,
         "analysisId": 21,
@@ -112,15 +118,91 @@ def test_empty_content_rejected(client_factory):
         "/api/v1/trainings/12/draft", json={**TASK, "analysisId": 20, "content": "  ", "aiWriting": {"content": AI}}
     )
     assert r.status_code == 400 and r.json()["error"]["code"] == "EMPTY_CONTENT"
+    r = client.post("/api/v1/trainings/12/draft", json={**TASK, "content": USER})  # analysisId 누락
+    assert r.status_code == 400 and r.json()["error"]["code"] == "VALIDATION_ERROR"
+    r = client.post("/ai/analyze", json={"topic": TOPIC})  # 기존 경로는 그대로 422
+    assert r.status_code == 422 and r.json()["error"]["code"] == "INVALID_INPUT"
 
 
 def test_complete_returns_ratio_in_percent(client_factory):
     client, _ = client_factory(scripted())
     r = client.post(
         "/api/v1/trainings/12/complete",
-        json={"content": USER, "draft": {"versionId": 30, "content": USER}, "aiWriting": {"content": AI}},
+        json={"content": USER, "finalVersionId": 32, "draft": {"versionId": 30, "content": USER}, "aiWriting": {"content": AI}},
     )
     body = r.json()
     assert r.status_code == 200, body
     assert body["trainingId"] == 12 and body["status"] == "COMPLETED"
+    assert body["finalVersionId"] == 32 and body["completedAt"].endswith("+09:00")
     assert body["selfThoughtRatio"] + body["aiDependencyRatio"] == 100.0 and body["sentences"]
+
+
+def test_training_create_accepts_multipart_files(client_factory):
+    client, _ = client_factory(scripted())
+    files = [
+        ("request", (None, json.dumps({**TASK, "trainingId": 12, "timerMinutes": 15}), "application/json")),
+        ("files", ("IPCC_요약.pdf", b"%PDF-1.4 dummy", "application/pdf")),
+        ("files", ("메모.png", b"fake-png", "image/png")),
+    ]
+    r = client.post("/api/v1/trainings", files=files)
+    body = r.json()
+    assert r.status_code == 201, body
+    assert body["attachments"] == [{"fileName": "IPCC_요약.pdf", "fileSize": 14}, {"fileName": "메모.png", "fileSize": 8}]
+    assert body["aiWriting"]["content"]
+
+    bad = [("request", (None, json.dumps(TASK), "application/json")), ("files", ("run.exe", b"MZ", "application/octet-stream"))]
+    r = client.post("/api/v1/trainings", files=bad)
+    assert r.status_code == 400 and r.json()["error"]["code"] == "FILE_TYPE_NOT_ALLOWED"
+
+    many = [("request", (None, json.dumps(TASK), "application/json"))] + [
+        ("files", (f"{i}.pdf", b"x", "application/pdf")) for i in range(6)
+    ]
+    r = client.post("/api/v1/trainings", files=many)
+    assert r.status_code == 413 and r.json()["error"]["code"] == "FILE_TOO_LARGE"
+
+    r = client.post("/api/v1/trainings", files=[("request", (None, json.dumps({"writingType": "논설문"}), "application/json"))])
+    assert r.status_code == 400 and r.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_analysis_list_by_training(client_factory):
+    client, _ = client_factory(scripted())
+    _draft(client, analysis_id=20)
+    prev = client.get("/api/v1/analyses/20").json()
+    r = client.post(
+        "/api/v1/trainings/12/revisions",
+        json={**TASK, "analysisId": 21, "seqNo": 1, "content": REVISED, "baseline": {"content": USER}, "previousResult": prev},
+    )
+    assert r.status_code == 202, r.json()  # aiWriting 없으면 직전 결과의 AI 글을 재사용
+    _wait(client, 21)
+    assert client.get("/api/v1/analyses/21").json()["aiWriting"] == {"content": AI}
+
+    rows = client.get("/api/v1/trainings/12/analyses").json()
+    assert [(x["analysisId"], x["seqNo"], x["status"]) for x in rows] == [(20, 0, "SUCCESS"), (21, 1, "SUCCESS")]
+    assert all(x["createdAt"].endswith("+09:00") for x in rows)
+    assert client.get("/api/v1/trainings/99/analyses").json() == []
+
+
+def test_missing_ai_writing_is_generated_first_and_reused_on_retry(client_factory):
+    state = {"down": True}
+    base = scripted()
+
+    def flaky(messages, schema):
+        if state["down"] and (schema or {}).get("title") in ("TextScoreOutput", "TextScoreWithActionOutput"):
+            raise LLMUnavailable("down")  # 채점만 실패: AI 작성 글은 만들어지고 분석은 FAILED
+        if (schema or {}).get("title") == "CompareOutput":  # 생성된 AI 글에는 고정 문구가 없으므로 직접 응답
+            return {"comparisons": [{"key": k, "comparison": "글 A는 경험에, B는 통계에 기댄다."} for k in CRITERIA]}
+        return base(messages, schema)
+
+    client, llm = client_factory(flaky)
+    r = client.post("/api/v1/trainings/12/draft", json={**TASK, "analysisId": 30, "content": USER})
+    assert r.status_code == 202, r.json()
+    assert _wait(client, 30)["status"] == "FAILED"
+    drafts_before = len([c for c in llm.calls if c[1] is None])
+    assert drafts_before >= 1  # 분석 전에 AI 작성 글을 먼저 만들었다
+
+    state["down"] = False
+    assert client.post("/api/v1/analyses/30/retry").status_code == 202
+    assert _wait(client, 30)["status"] == "SUCCESS"
+    assert len([c for c in llm.calls if c[1] is None]) == drafts_before  # 재시도 때 다시 만들지 않음
+    res = client.get("/api/v1/analyses/30").json()
+    assert res["aiWriting"]["content"].startswith("참고 초안")
