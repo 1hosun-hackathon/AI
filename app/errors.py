@@ -11,6 +11,12 @@ ERRORS: dict[str, tuple[int, bool, str]] = {
     "JOB_NOT_FOUND": (404, True, "분석 작업을 찾을 수 없어요. 다시 요청해 주세요."),
     "QUEUE_FULL": (429, True, "요청이 많아 잠시 후 다시 시도해 주세요."),
     "INTERNAL": (500, True, "일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요."),
+    # 노션 API 명세 경로(/api/v1)에서 쓰는 코드
+    "EMPTY_CONTENT": (400, False, "글 내용을 입력해 주세요."),
+    "NO_CHANGES": (409, False, "직전 제출본과 달라진 내용이 없어요."),
+    "ANALYSIS_NOT_FOUND": (404, True, "분석을 찾을 수 없어요. 다시 제출해 주세요."),
+    "ANALYSIS_NOT_READY": (409, True, "분석이 아직 끝나지 않았어요."),
+    "ANALYSIS_NOT_FAILED": (409, False, "실패한 분석만 다시 시도할 수 있어요."),
 }
 
 

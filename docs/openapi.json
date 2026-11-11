@@ -216,31 +216,31 @@
         }
       }
     },
-    "/ai/v2/ai-writing": {
+    "/api/v1/trainings": {
       "post": {
         "tags": [
-          "백엔드 명세 형식"
+          "노션 API 명세"
         ],
-        "summary": "Create Ai Writing",
-        "description": "2-1 훈련 생성 직후(또는 4-4 재시도 시) AI 작성 글을 만든다. 동기 호출.",
-        "operationId": "create_ai_writing_ai_v2_ai_writing_post",
+        "summary": "Create Training",
+        "description": "2-1 훈련 생성: 과제 조건만으로 AI 작성 글을 만든다(동기, 수십 초). 4-4에서 AI 글 생성이 실패했을 때도 다시 호출한다.",
+        "operationId": "create_training_api_v1_trainings_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AiWritingRequest"
+                "$ref": "#/components/schemas/TrainingCreateRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AiWritingResponse"
+                  "$ref": "#/components/schemas/TrainingCreateResponse"
                 }
               }
             }
@@ -258,23 +258,34 @@
         }
       }
     },
-    "/ai/v2/analyses": {
+    "/api/v1/trainings/{trainingId}/draft": {
       "post": {
         "tags": [
-          "백엔드 명세 형식"
+          "노션 API 명세"
         ],
-        "summary": "Submit Analysis",
-        "description": "3-2 초안 제출(seqNo 0) 또는 3-4 다시 검사하기(seqNo≥1)의 비교 분석을 시작한다.",
-        "operationId": "submit_analysis_ai_v2_analyses_post",
+        "summary": "Submit Draft",
+        "description": "3-2 초안 제출: 초안과 AI 작성 글을 비교 분석한다(비동기). 4-1로 상태를 확인한다.",
+        "operationId": "submit_draft_api_v1_trainings__trainingId__draft_post",
+        "parameters": [
+          {
+            "name": "trainingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Trainingid"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AnalysisRequest"
+                "$ref": "#/components/schemas/DraftSubmitRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "202": {
@@ -282,7 +293,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AnalysisAccepted"
+                  "$ref": "#/components/schemas/SubmitAccepted"
                 }
               }
             }
@@ -300,32 +311,42 @@
         }
       }
     },
-    "/ai/v2/analyses/{job_id}": {
-      "get": {
+    "/api/v1/trainings/{trainingId}/revisions": {
+      "post": {
         "tags": [
-          "백엔드 명세 형식"
+          "노션 API 명세"
         ],
-        "summary": "Get Analysis",
-        "description": "4-1 분석 상태 폴링. SUCCESS면 result를 4-2 결과로 저장한다.",
-        "operationId": "get_analysis_ai_v2_analyses__job_id__get",
+        "summary": "Submit Revision",
+        "description": "3-4 다시 검사하기: 수정본을 다시 분석하고 지난 보완 방향(reflectPoint) 반영 여부를 본다(비동기).",
+        "operationId": "submit_revision_api_v1_trainings__trainingId__revisions_post",
         "parameters": [
           {
-            "name": "job_id",
+            "name": "trainingId",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "Job Id"
+              "type": "integer",
+              "title": "Trainingid"
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionSubmitRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {
+          "202": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AnalysisJob"
+                  "$ref": "#/components/schemas/SubmitAccepted"
                 }
               }
             }
@@ -343,23 +364,34 @@
         }
       }
     },
-    "/ai/v2/self-thought-ratio": {
+    "/api/v1/trainings/{trainingId}/complete": {
       "post": {
         "tags": [
-          "백엔드 명세 형식"
+          "노션 API 명세"
         ],
-        "summary": "Compute Ratio",
-        "description": "3-5 훈련 완료 시 자기 사고 비율·AI 의존도(%)를 계산한다. LLM 미사용, 동기 호출.",
-        "operationId": "compute_ratio_ai_v2_self_thought_ratio_post",
+        "summary": "Complete Training",
+        "description": "3-5 훈련 완료: 최종 글의 자기 사고 비율·AI 의존도(%)를 계산한다. LLM 미사용, 동기.",
+        "operationId": "complete_training_api_v1_trainings__trainingId__complete_post",
+        "parameters": [
+          {
+            "name": "trainingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Trainingid"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RatioRequest"
+                "$ref": "#/components/schemas/CompleteRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -367,7 +399,136 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RatioResponse"
+                  "$ref": "#/components/schemas/CompleteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyses/{analysisId}/status": {
+      "get": {
+        "tags": [
+          "노션 API 명세"
+        ],
+        "summary": "Analysis Status",
+        "description": "4-1 분석 상태. 2초 간격 폴링.",
+        "operationId": "analysis_status_api_v1_analyses__analysisId__status_get",
+        "parameters": [
+          {
+            "name": "analysisId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Analysisid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyses/{analysisId}": {
+      "get": {
+        "tags": [
+          "노션 API 명세"
+        ],
+        "summary": "Analysis Result",
+        "description": "4-2 비교 분석 결과. SUCCESS 전에는 409 ANALYSIS_NOT_READY.",
+        "operationId": "analysis_result_api_v1_analyses__analysisId__get",
+        "parameters": [
+          {
+            "name": "analysisId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Analysisid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonAnalysis"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyses/{analysisId}/retry": {
+      "post": {
+        "tags": [
+          "노션 API 명세"
+        ],
+        "summary": "Retry Analysis",
+        "description": "4-4 분석 재시도. FAILED인 분석만 같은 입력으로 다시 실행한다.",
+        "operationId": "retry_analysis_api_v1_analyses__analysisId__retry_post",
+        "parameters": [
+          {
+            "name": "analysisId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Analysisid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryAccepted"
                 }
               }
             }
@@ -388,103 +549,18 @@
   },
   "components": {
     "schemas": {
-      "AiWritingRequest": {
-        "properties": {
-          "topic": {
-            "type": "string",
-            "title": "Topic"
-          },
-          "writingType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Writingtype",
-            "description": "글 형식. 예: 논설문"
-          },
-          "requirements": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Requirements",
-            "description": "과제 조건 문자열. 예: \"800~1,000자, 근거 2개 이상\""
-          }
-        },
-        "type": "object",
-        "required": [
-          "topic"
-        ],
-        "title": "AiWritingRequest"
-      },
-      "AiWritingResponse": {
+      "AiWriting": {
         "properties": {
           "content": {
             "type": "string",
-            "title": "Content",
-            "description": "4-2 aiWriting.content로 저장할 AI 작성 글"
-          },
-          "charCount": {
-            "type": "integer",
-            "title": "Charcount"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings",
-            "default": []
-          },
-          "promptVersion": {
-            "type": "string",
-            "title": "Promptversion"
-          },
-          "model": {
-            "type": "string",
-            "title": "Model"
+            "title": "Content"
           }
         },
         "type": "object",
         "required": [
-          "content",
-          "charCount",
-          "promptVersion",
-          "model"
+          "content"
         ],
-        "title": "AiWritingResponse"
-      },
-      "AnalysisAccepted": {
-        "properties": {
-          "jobId": {
-            "type": "string",
-            "title": "Jobid"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "GENERATING",
-              "SUCCESS",
-              "FAILED"
-            ],
-            "title": "Status",
-            "default": "PENDING"
-          }
-        },
-        "type": "object",
-        "required": [
-          "jobId"
-        ],
-        "title": "AnalysisAccepted"
+        "title": "AiWriting"
       },
       "AnalysisItem": {
         "properties": {
@@ -535,8 +611,7 @@
             "type": "integer",
             "maximum": 5.0,
             "minimum": 1.0,
-            "title": "Userscore",
-            "description": "화면에는 표시하지 않음. 대시보드 집계·재검사에 사용"
+            "title": "Userscore"
           },
           "aiScore": {
             "type": "integer",
@@ -575,236 +650,6 @@
           "better"
         ],
         "title": "AnalysisItem"
-      },
-      "AnalysisJob": {
-        "properties": {
-          "jobId": {
-            "type": "string",
-            "title": "Jobid"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "GENERATING",
-              "SUCCESS",
-              "FAILED"
-            ],
-            "title": "Status"
-          },
-          "result": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AnalysisReport"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Result"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error",
-            "description": "{\"code\", \"message\", \"retryable\"}"
-          }
-        },
-        "type": "object",
-        "required": [
-          "jobId",
-          "status"
-        ],
-        "title": "AnalysisJob",
-        "description": "4-1 분석 상태. SUCCESS면 result, FAILED면 error가 채워진다."
-      },
-      "AnalysisReport": {
-        "properties": {
-          "seqNo": {
-            "type": "integer",
-            "title": "Seqno"
-          },
-          "overallSummary": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overallsummary",
-            "description": "종합 리포트. 검사를 통과하지 못하면 null"
-          },
-          "strengths": {
-            "type": "string",
-            "title": "Strengths",
-            "description": "강점. 여러 개면 줄바꿈으로 구분"
-          },
-          "improvements": {
-            "type": "string",
-            "title": "Improvements",
-            "description": "보완할 점. 여러 개면 줄바꿈으로 구분"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AnalysisItem"
-            },
-            "type": "array",
-            "title": "Items",
-            "description": "THESIS, EVIDENCE, STRUCTURE, EXPRESSION, ORIGINALITY 순서"
-          },
-          "questions": {
-            "items": {
-              "$ref": "#/components/schemas/Question"
-            },
-            "type": "array",
-            "title": "Questions"
-          },
-          "reflectionReviews": {
-            "items": {
-              "$ref": "#/components/schemas/ReflectionReview"
-            },
-            "type": "array",
-            "title": "Reflectionreviews",
-            "description": "다시 검사(seqNo≥1)일 때 지난 reflectPoint 반영 여부",
-            "default": []
-          },
-          "scoreDelta": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "propertyNames": {
-              "enum": [
-                "THESIS",
-                "EVIDENCE",
-                "STRUCTURE",
-                "EXPRESSION",
-                "ORIGINALITY"
-              ]
-            },
-            "type": "object",
-            "title": "Scoredelta",
-            "description": "다시 검사일 때 직전 회차 대비 userScore 변화",
-            "default": {}
-          },
-          "partial": {
-            "type": "boolean",
-            "title": "Partial",
-            "description": "일부 항목·필드가 빠졌으면 true. 사유는 warnings",
-            "default": false
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Warnings",
-            "default": []
-          },
-          "promptVersion": {
-            "type": "string",
-            "title": "Promptversion"
-          },
-          "model": {
-            "type": "string",
-            "title": "Model"
-          }
-        },
-        "type": "object",
-        "required": [
-          "seqNo",
-          "strengths",
-          "improvements",
-          "items",
-          "questions",
-          "promptVersion",
-          "model"
-        ],
-        "title": "AnalysisReport",
-        "description": "4-2 비교 분석 결과의 AI 부분. 다시 검사할 때 previousResult로 그대로 돌려준다."
-      },
-      "AnalysisRequest": {
-        "properties": {
-          "topic": {
-            "type": "string",
-            "title": "Topic"
-          },
-          "writingType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Writingtype",
-            "description": "글 형식. 예: 논설문"
-          },
-          "requirements": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Requirements",
-            "description": "과제 조건 문자열. 예: \"800~1,000자, 근거 2개 이상\""
-          },
-          "seqNo": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Seqno",
-            "description": "0이면 초안 제출(3-2), 1 이상이면 다시 검사하기(3-4)",
-            "default": 0
-          },
-          "myWriting": {
-            "$ref": "#/components/schemas/Content",
-            "description": "이번에 제출한 글"
-          },
-          "aiWriting": {
-            "$ref": "#/components/schemas/Content"
-          },
-          "baseline": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Content"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "seqNo≥1일 때 필수. 최초 초안(seqNo 0)"
-          },
-          "previousResult": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AnalysisReport"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "seqNo≥1일 때 필수. 직전 회차 분석 결과 그대로"
-          }
-        },
-        "type": "object",
-        "required": [
-          "topic",
-          "myWriting",
-          "aiWriting"
-        ],
-        "title": "AnalysisRequest"
       },
       "AnalysisResult": {
         "properties": {
@@ -900,6 +745,52 @@
         ],
         "title": "AnalysisResult"
       },
+      "AnalysisStatusResponse": {
+        "properties": {
+          "analysisId": {
+            "type": "integer",
+            "title": "Analysisid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "GENERATING",
+              "SUCCESS",
+              "FAILED"
+            ],
+            "title": "Status"
+          },
+          "trainingStatus": {
+            "type": "string",
+            "enum": [
+              "ANALYZING",
+              "COMPARED"
+            ],
+            "title": "Trainingstatus"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "FAILED일 때 {\"code\", \"message\", \"retryable\"}"
+          }
+        },
+        "type": "object",
+        "required": [
+          "analysisId",
+          "status",
+          "trainingStatus"
+        ],
+        "title": "AnalysisStatusResponse"
+      },
       "AnalyzeRequest": {
         "properties": {
           "topic": {
@@ -927,18 +818,225 @@
         ],
         "title": "AnalyzeRequest"
       },
-      "Content": {
+      "ComparisonAnalysis": {
         "properties": {
-          "content": {
+          "analysisId": {
+            "type": "integer",
+            "title": "Analysisid"
+          },
+          "trainingId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trainingid"
+          },
+          "seqNo": {
+            "type": "integer",
+            "title": "Seqno"
+          },
+          "createdAt": {
             "type": "string",
-            "title": "Content"
+            "title": "Createdat"
+          },
+          "myWriting": {
+            "$ref": "#/components/schemas/Writing"
+          },
+          "aiWriting": {
+            "$ref": "#/components/schemas/AiWriting"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Writing"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "재검사(seqNo≥1)일 때만 최초 초안"
+          },
+          "overallSummary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overallsummary"
+          },
+          "strengths": {
+            "type": "string",
+            "title": "Strengths",
+            "description": "여러 개면 줄바꿈으로 구분"
+          },
+          "improvements": {
+            "type": "string",
+            "title": "Improvements",
+            "description": "여러 개면 줄바꿈으로 구분"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "THESIS, EVIDENCE, STRUCTURE, EXPRESSION, ORIGINALITY 순서"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "reflectionReviews": {
+            "items": {
+              "$ref": "#/components/schemas/ReflectionReview"
+            },
+            "type": "array",
+            "title": "Reflectionreviews",
+            "default": []
+          },
+          "scoreDelta": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "THESIS",
+                "EVIDENCE",
+                "STRUCTURE",
+                "EXPRESSION",
+                "ORIGINALITY"
+              ]
+            },
+            "type": "object",
+            "title": "Scoredelta",
+            "default": {}
+          },
+          "partial": {
+            "type": "boolean",
+            "title": "Partial",
+            "default": false
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          },
+          "promptVersion": {
+            "type": "string",
+            "title": "Promptversion"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
           }
         },
         "type": "object",
         "required": [
-          "content"
+          "analysisId",
+          "trainingId",
+          "seqNo",
+          "createdAt",
+          "myWriting",
+          "aiWriting",
+          "overallSummary",
+          "strengths",
+          "improvements",
+          "items",
+          "questions",
+          "promptVersion",
+          "model"
         ],
-        "title": "Content"
+        "title": "ComparisonAnalysis"
+      },
+      "CompleteRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "최종 글"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/Writing",
+            "description": "최초 초안(seqNo 0)"
+          },
+          "aiWriting": {
+            "$ref": "#/components/schemas/AiWriting"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content",
+          "draft",
+          "aiWriting"
+        ],
+        "title": "CompleteRequest"
+      },
+      "CompleteResponse": {
+        "properties": {
+          "trainingId": {
+            "type": "integer",
+            "title": "Trainingid"
+          },
+          "status": {
+            "type": "string",
+            "const": "COMPLETED",
+            "title": "Status",
+            "default": "COMPLETED"
+          },
+          "selfThoughtRatio": {
+            "type": "number",
+            "title": "Selfthoughtratio",
+            "description": "0~100, 소수 첫째 자리"
+          },
+          "aiDependencyRatio": {
+            "type": "number",
+            "title": "Aidependencyratio",
+            "description": "0~100. selfThoughtRatio와 합이 100"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/RatioSentence"
+            },
+            "type": "array",
+            "title": "Sentences"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "promptVersion": {
+            "type": "string",
+            "title": "Promptversion"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trainingId",
+          "selfThoughtRatio",
+          "aiDependencyRatio",
+          "sentences",
+          "method",
+          "promptVersion",
+          "model"
+        ],
+        "title": "CompleteResponse"
       },
       "DependencyMethod": {
         "properties": {
@@ -1036,6 +1134,70 @@
           "method"
         ],
         "title": "DependencyResponse"
+      },
+      "DraftSubmitRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "writingType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writingtype",
+            "description": "예: 논설문"
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirements",
+            "description": "예: \"800~1,000자, 근거 2개 이상\""
+          },
+          "analysisId": {
+            "type": "integer",
+            "title": "Analysisid",
+            "description": "백엔드가 만든 comparison_analysis ID"
+          },
+          "versionId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionid"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "제출한 초안"
+          },
+          "aiWriting": {
+            "$ref": "#/components/schemas/AiWriting"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "analysisId",
+          "content",
+          "aiWriting"
+        ],
+        "title": "DraftSubmitRequest"
       },
       "Evidence": {
         "properties": {
@@ -1265,72 +1427,6 @@
           "content"
         ],
         "title": "Question"
-      },
-      "RatioRequest": {
-        "properties": {
-          "draft": {
-            "$ref": "#/components/schemas/Content",
-            "description": "최초 초안(seqNo 0)"
-          },
-          "finalWriting": {
-            "$ref": "#/components/schemas/Content",
-            "description": "훈련 완료 시 확정한 최종 글"
-          },
-          "aiWriting": {
-            "$ref": "#/components/schemas/Content"
-          }
-        },
-        "type": "object",
-        "required": [
-          "draft",
-          "finalWriting",
-          "aiWriting"
-        ],
-        "title": "RatioRequest"
-      },
-      "RatioResponse": {
-        "properties": {
-          "selfThoughtRatio": {
-            "type": "number",
-            "title": "Selfthoughtratio",
-            "description": "0~100, 소수 첫째 자리"
-          },
-          "aiDependencyRatio": {
-            "type": "number",
-            "title": "Aidependencyratio",
-            "description": "0~100, 소수 첫째 자리. selfThoughtRatio와 합이 100"
-          },
-          "sentences": {
-            "items": {
-              "$ref": "#/components/schemas/RatioSentence"
-            },
-            "type": "array",
-            "title": "Sentences"
-          },
-          "method": {
-            "type": "string",
-            "title": "Method",
-            "description": "산정 기준 설명"
-          },
-          "promptVersion": {
-            "type": "string",
-            "title": "Promptversion"
-          },
-          "model": {
-            "type": "string",
-            "title": "Model"
-          }
-        },
-        "type": "object",
-        "required": [
-          "selfThoughtRatio",
-          "aiDependencyRatio",
-          "sentences",
-          "method",
-          "promptVersion",
-          "model"
-        ],
-        "title": "RatioResponse"
       },
       "RatioSentence": {
         "properties": {
@@ -1567,6 +1663,105 @@
         "type": "object",
         "title": "Requirements"
       },
+      "RetryAccepted": {
+        "properties": {
+          "analysisId": {
+            "type": "integer",
+            "title": "Analysisid"
+          },
+          "status": {
+            "type": "string",
+            "const": "PENDING",
+            "title": "Status",
+            "default": "PENDING"
+          }
+        },
+        "type": "object",
+        "required": [
+          "analysisId"
+        ],
+        "title": "RetryAccepted"
+      },
+      "RevisionSubmitRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "writingType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writingtype",
+            "description": "예: 논설문"
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirements",
+            "description": "예: \"800~1,000자, 근거 2개 이상\""
+          },
+          "analysisId": {
+            "type": "integer",
+            "title": "Analysisid",
+            "description": "백엔드가 만든 comparison_analysis ID"
+          },
+          "versionId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionid"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "제출한 초안"
+          },
+          "aiWriting": {
+            "$ref": "#/components/schemas/AiWriting"
+          },
+          "seqNo": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Seqno"
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/Writing",
+            "description": "최초 초안(seqNo 0)"
+          },
+          "previousResult": {
+            "$ref": "#/components/schemas/ComparisonAnalysis",
+            "description": "직전 회차 4-2 결과(GET /api/v1/analyses/{analysisId} 응답) 그대로"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic",
+          "analysisId",
+          "content",
+          "aiWriting",
+          "seqNo",
+          "baseline",
+          "previousResult"
+        ],
+        "title": "RevisionSubmitRequest"
+      },
       "SentenceLabel": {
         "properties": {
           "text": {
@@ -1599,6 +1794,138 @@
           "sim_ai"
         ],
         "title": "SentenceLabel"
+      },
+      "SubmitAccepted": {
+        "properties": {
+          "versionId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionid"
+          },
+          "seqNo": {
+            "type": "integer",
+            "title": "Seqno"
+          },
+          "analysisId": {
+            "type": "integer",
+            "title": "Analysisid"
+          },
+          "status": {
+            "type": "string",
+            "const": "ANALYZING",
+            "title": "Status",
+            "default": "ANALYZING"
+          }
+        },
+        "type": "object",
+        "required": [
+          "versionId",
+          "seqNo",
+          "analysisId"
+        ],
+        "title": "SubmitAccepted"
+      },
+      "TrainingCreateRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "writingType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writingtype",
+            "description": "예: 논설문"
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirements",
+            "description": "예: \"800~1,000자, 근거 2개 이상\""
+          },
+          "trainingId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trainingid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic"
+        ],
+        "title": "TrainingCreateRequest"
+      },
+      "TrainingCreateResponse": {
+        "properties": {
+          "trainingId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trainingid"
+          },
+          "aiWriting": {
+            "$ref": "#/components/schemas/AiWriting",
+            "description": "4-2 aiWriting으로 저장할 AI 작성 글"
+          },
+          "charCount": {
+            "type": "integer",
+            "title": "Charcount"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          },
+          "promptVersion": {
+            "type": "string",
+            "title": "Promptversion"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trainingId",
+          "aiWriting",
+          "charCount",
+          "promptVersion",
+          "model"
+        ],
+        "title": "TrainingCreateResponse"
       },
       "ValidationError": {
         "properties": {
@@ -1639,6 +1966,30 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "Writing": {
+        "properties": {
+          "versionId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versionid"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "Writing"
       },
       "ActionItemReview": {
         "properties": {

@@ -43,18 +43,21 @@ def test_mock_mode_serves_every_endpoint():
         assert r.status_code == 200, r.json()
 
 
-def test_mock_mode_serves_backend_spec_endpoints():
+def test_mock_mode_serves_notion_spec_paths():
     settings = Settings(_env_file=None, warmup=False, llm_provider="mock")
     task = {"topic": TOPIC, "writingType": "논설문", "requirements": "800~1,000자, 근거 2개 이상"}
     with TestClient(create_app(settings)) as client:
-        r = client.post("/ai/v2/ai-writing", json=task)
-        assert r.status_code == 200 and 800 <= r.json()["charCount"] <= 1000, r.json()
+        r = client.post("/api/v1/trainings", json={**task, "trainingId": 1})
+        assert r.status_code == 201 and 800 <= r.json()["charCount"] <= 1000, r.json()
 
-        r = client.post("/ai/v2/analyses", json={**task, "myWriting": {"content": USER}, "aiWriting": {"content": AI}})
-        job_id = r.json()["jobId"]
+        r = client.post(
+            "/api/v1/trainings/1/draft", json={**task, "analysisId": 1, "content": USER, "aiWriting": {"content": AI}}
+        )
+        assert r.status_code == 202, r.json()
         for _ in range(500):
-            body = client.get(f"/ai/v2/analyses/{job_id}").json()
-            if body["status"] in ("SUCCESS", "FAILED"):
+            status = client.get("/api/v1/analyses/1/status").json()["status"]
+            if status in ("SUCCESS", "FAILED"):
                 break
-        assert body["status"] == "SUCCESS", body
-        assert [it["criterion"] for it in body["result"]["items"]] == [k.upper() for k in CRITERIA]
+        assert status == "SUCCESS"
+        res = client.get("/api/v1/analyses/1").json()
+        assert [it["criterion"] for it in res["items"]] == [k.upper() for k in CRITERIA]
