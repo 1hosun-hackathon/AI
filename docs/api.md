@@ -98,3 +98,84 @@ v2까지 쓰던 이름(논지, 근거, 구조, 표현, 독창성)에서 바뀌�
 | `QUEUE_FULL` | 429 | true | 대기 중인 분석이 너무 많음 |
 | `INTERNAL` | 500 | true | 그 밖의 서버 오류 |
 
+## 요청·응답 예시
+
+정식 형식은 `docs/openapi.json`이다. 아래는 읽기 쉽게 줄인 예시다.
+
+### POST /ai/reference-draft
+
+```json
+// 요청
+{ "topic": "대학생 아르바이트가 학업에 미치는 영향", "requirements": { "format": "리포트", "length": "800~1000자" } }
+// 응답
+{ "draft": "string", "char_count": 950, "warnings": [], "prompt_version": "v4", "model": "gemma4:e2b-it-qat" }
+```
+
+### POST /ai/analyze (비동기)
+
+```json
+// 요청
+{ "topic": "...", "requirements": { ... }, "user_draft": "...", "ai_draft": "..." }
+// 응답 (202)
+{ "job_id": "uuid" }
+// GET /ai/jobs/{job_id}
+{ "job_id": "...", "state": "queued | running | done | failed", "result": { ... } | null, "error": { ... } | null }
+// state가 done일 때 result
+{
+  "status": "done | partial",
+  "items": [
+    {
+      "key": "thesis",
+      "user_score": 3, "ai_score": 4,
+      "user_summary": "내 글의 해당 항목 요약",
+      "ai_summary": "AI 글의 해당 항목 요약",
+      "comparison": "두 글의 차이 설명",
+      "evidence": [ { "source": "user | ai", "quote": "원문 그대로의 문장", "reason": "..." } ],
+      "better": "user | ai | tie",
+      "action_item": "보완 방향 (방향만, 고쳐 쓴 문장 없음) | null"
+    }
+  ],
+  "overall_report": "종합 비교 리포트 (2~3문단) | null",
+  "strengths": ["강점"],
+  "improvements": ["보완할 점"],
+  "questions": ["스스로 점검하는 열린 질문 2~3개"],
+  "failed_items": [],
+  "warnings": [],
+  "prompt_version": "v4", "model": "gemma4:e2b-it-qat"
+}
+```
+
+### POST /ai/reanalyze (비동기)
+
+```json
+// 요청
+{ "topic": "...", "requirements": { ... }, "original_draft": "...", "current_draft": "...",
+  "ai_draft": "...", "previous_result": { /* 직전 analyze 또는 reanalyze 결과 */ }, "round": 2 }
+// result: analyze 결과 + 아래 필드
+{
+  "action_item_review": [ { "key": "thesis", "action_item": "...", "reflected": "yes | partial | no", "reason": "..." } ],
+  "score_delta": { "thesis": 1, "evidence": 0, "structure": 1, "expression": 0, "originality": 0 }
+}
+```
+
+### POST /ai/dependency (동기, LLM 미사용)
+
+```json
+// 요청
+{ "user_draft": "...", "final_text": "...", "ai_draft": "..." }
+// 응답
+{
+  "self_composition_ratio": 0.71,
+  "ai_dependency_ratio": 0.29,
+  "sentences": [ { "text": "...", "label": "kept | new | ai_similar", "sim_user": 0.82, "sim_ai": 0.41 } ],
+  "method": { "embedding_model": "bge-m3", "ai_similar_threshold": 0.80, "keep_threshold": 0.75,
+              "weighting": "chars", "description": "산정 기준 설명" }
+}
+```
+
+## job 수명
+
+- 서버 메모리에 저장하고, 끝난 job은 `JOB_TTL_SEC`(기본 3600초)가 지나면 지운다.
+- 서버를 다시 시작하면 진행 중이던 job은 사라진다. `JOB_NOT_FOUND`(404, `retryable: true`)를 받으면 같은 요청을 다시 보낸다.
+- 대기 중인 job이 `JOB_QUEUE_MAX`(기본 20)를 넘으면 `POST`는 429(`QUEUE_FULL`)로 거절한다.
+- 서버는 uvicorn 워커 1개로 실행한다. 워커가 여러 개면 조회 요청이 다른 프로세스로 가서 job을 찾지 못한다.
