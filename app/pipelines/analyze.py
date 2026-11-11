@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from app.errors import AppError
 from app.guardrails.citation import resolve_evidence
 from app.guardrails.ghostwriting import ghostwriting_issues
+from app.guardrails.neutrality import content_shift_reasons, one_sided_question
 from app.guardrails.questions import rule_check_question
 from app.llm.base import LLMError, Message
 from app.llm.outputs import (
@@ -27,7 +28,8 @@ from app.pipelines.context import Ctx
 from app.schemas.analysis import AnalysisResult, AnalyzeRequest, Evidence, ItemResult
 from app.schemas.common import CRITERIA, CRITERIA_INFO, Requirements
 from app.text.labels import relabel
-from app.text.sentences import numbered, split_sentences
+from app.text.sentences import numbered_paragraphs, split_paragraphs
+from app.text.structure import observe
 
 logger = logging.getLogger(__name__)
 
@@ -54,16 +56,34 @@ class Feedback:
 class _Checker:
     """대필 검사 공통 설정 (참고 글, 주제·요구사항 제외, 학습자 글 인용 허용)."""
 
+    REPORT_MAX_SHARED = 8  # 종합 리포트는 AI 글을 비교·언급하므로 짧은 겹침 허용
+
     def __init__(self, ctx: Ctx, topic: str, req: Requirements, user_text: str, ai_text: str):
         self.n = ctx.settings.ngram_n
         self.ai_text = ai_text
-        self.exclude = [topic, req.format or "", req.extra or "", req.length or ""]
+        # 학습자 글에도 있는 표현은 두 글이 공유하는 주제 어휘이지 AI 글을 베낀 것이 아니다.
+        self.exclude = [topic, req.format or "", req.extra or "", req.length or "", user_text]
         self.allowed = [user_text]
 
-    def __call__(self, text: str) -> list[str]:
+    def __call__(self, text: str, max_shared: int = 0) -> list[str]:
         return ghostwriting_issues(
-            text, self.ai_text, n=self.n, exclude=self.exclude, allowed_quote_sources=self.allowed
+            text,
+            self.ai_text,
+            n=self.n,
+            exclude=self.exclude,
+            allowed_quote_sources=self.allowed,
+            max_shared=max_shared,
         )
+
+    def report(self, text: str) -> list[str]:
+        return self(text, max_shared=self.REPORT_MAX_SHARED)
+
+    def advice(self, text: str) -> list[str]:
+        """보완 방향·보완할 점: 대필 검사 + 결론·관점 변경 권유 검사."""
+        return self(text) + content_shift_reasons(text)
+
+    def question(self, text: str) -> str | None:
+        return rule_check_question(text) or one_sided_question(text) or (", ".join(self(text)) or None)
 
 
 def _system(ctx: Ctx) -> Message:
@@ -77,12 +97,19 @@ def _retry_note(ctx: Ctx, problems: list[str]) -> Message:
 # ---------------------------------------------------------------- 1. 항목 채점
 
 
+# 구조 관찰값을 넣어 줄 항목: 목적 문장 위치(목적·주제 설정), 문단·순서(구성), 결론 위치(논리 전개)
+STRUCTURE_KEYS = ("thesis", "structure", "originality")
+
+
 async def _score_text(
-    ctx: Ctx, topic: str, key: str, sentences: list[str], *, with_action: bool, check: _Checker
+    ctx: Ctx, topic: str, key: str, paragraphs: list[list[str]], *, with_action: bool, check: _Checker
 ) -> tuple[TextScoreOutput, list[str]]:
     """글 한 편을 항목 하나로 채점. with_action이면 보완 방향도 받고 대필 검사 후 재생성한다."""
     s = ctx.settings
     name, desc = CRITERIA_INFO[key]
+    observations = ""
+    if key in STRUCTURE_KEYS:
+        observations = ctx.prompts.render("observations", facts=observe(paragraphs))
     msgs: list[Message] = [
         _system(ctx),
         {
@@ -93,7 +120,8 @@ async def _score_text(
                 name=name,
                 description=desc,
                 rubric=ctx.prompts.rubric(key),
-                text=numbered(sentences),
+                text=numbered_paragraphs(paragraphs),
+                observations=observations,
                 action_task=ctx.prompts.raw("action_task") if with_action else "",
             ),
         },
@@ -102,13 +130,13 @@ async def _score_text(
     out = await generate_structured(ctx.llm, msgs, model, temperature=s.llm_temperature)
     if not with_action:
         return out, []
-    issues = check(out.action)
+    issues = check.advice(out.action)
     for _ in range(s.guardrail_max_retry):
         if not issues:
             break
         retry = msgs + [{"role": "assistant", "content": out.model_dump_json()}, _retry_note(ctx, issues)]
         out = await generate_structured(ctx.llm, retry, model, temperature=s.llm_temperature)
-        issues = check(out.action)
+        issues = check.advice(out.action)
     return out, issues
 
 
@@ -122,7 +150,9 @@ class _Scored:
     ai_evidence: list[Evidence]
 
 
-async def _compare(ctx: Ctx, topic: str, user_s: list[str], ai_s: list[str], scored: list[_Scored]) -> dict[str, str]:
+async def _compare(
+    ctx: Ctx, topic: str, user_p: list[list[str]], ai_p: list[list[str]], scored: list[_Scored]
+) -> dict[str, str]:
     """항목별 비교 설명. A/B 배정은 무작위로 하고 결과의 라벨은 사용자용 이름으로 바꾼다."""
     user_is_a = ctx.rng.random() < 0.5
     names = {"A": USER_NAME, "B": AI_NAME} if user_is_a else {"A": AI_NAME, "B": USER_NAME}
@@ -141,8 +171,8 @@ async def _compare(ctx: Ctx, topic: str, user_s: list[str], ai_s: list[str], sco
             "content": ctx.prompts.render(
                 "compare",
                 topic=topic,
-                text_a=numbered(user_s if user_is_a else ai_s),
-                text_b=numbered(ai_s if user_is_a else user_s),
+                text_a=numbered_paragraphs(user_p if user_is_a else ai_p),
+                text_b=numbered_paragraphs(ai_p if user_is_a else user_p),
                 item_results="\n".join(lines),
             ),
         },
@@ -166,13 +196,15 @@ async def evaluate_items(
 ) -> Comparison:
     """fixed_ai가 주어지면 그 항목의 AI 글 점수·요약·근거를 다시 매기지 않고 그대로 쓴다(재분석)."""
     fixed_ai = fixed_ai or {}
-    user_s, ai_s = split_sentences(user_text), split_sentences(ai_text)
+    user_p, ai_p = split_paragraphs(user_text), split_paragraphs(ai_text)
+    user_s = [s for p in user_p for s in p]  # 문장 번호 = 문단을 이어 붙인 순서
+    ai_s = [s for p in ai_p for s in p]
     check = _Checker(ctx, topic, req, user_text, ai_text)
 
     ai_keys = [k for k in CRITERIA if k not in fixed_ai]
     results = await asyncio.gather(
-        *(_score_text(ctx, topic, k, user_s, with_action=True, check=check) for k in CRITERIA),
-        *(_score_text(ctx, topic, k, ai_s, with_action=False, check=check) for k in ai_keys),
+        *(_score_text(ctx, topic, k, user_p, with_action=True, check=check) for k in CRITERIA),
+        *(_score_text(ctx, topic, k, ai_p, with_action=False, check=check) for k in ai_keys),
         return_exceptions=True,
     )
     user_res = dict(zip(CRITERIA, results[: len(CRITERIA)]))
@@ -209,7 +241,7 @@ async def evaluate_items(
             raise first
         raise AppError("INTERNAL", detail=repr(first))
 
-    comparisons = await _compare(ctx, topic, user_s, ai_s, scored)
+    comparisons = await _compare(ctx, topic, user_p, ai_p, scored)
     if len(comparisons) < len(scored):
         warnings.append("일부 항목의 비교 설명을 생성하지 못해 점수 요약으로 대신했습니다.")
 
@@ -282,7 +314,7 @@ async def _judge(
     return [verdicts.get(i, "ok") for i in range(len(entries))]
 
 
-_REASON = {"stance_shift": "입장을 바꾸거나 절충하라고 권함", "leading": "답을 유도하는 질문"}
+_REASON = {"stance_shift": "결론·관점을 바꾸라고 권함", "leading": "답을 유도하는 질문"}
 
 
 async def _filter_feedback(
@@ -297,7 +329,7 @@ async def _filter_feedback(
     problems: list[str] = []
     fb = Feedback()
 
-    report_issues = check(out.overall_report)
+    report_issues = check.report(out.overall_report)
     if report_issues:
         problems.append(f"종합 리포트: {', '.join(report_issues)}")
     else:
@@ -312,7 +344,7 @@ async def _filter_feedback(
 
     improvements = []
     for text in out.improvements:
-        issues = check(text)
+        issues = check.advice(text)
         if issues:
             problems.append(f"보완할 점 '{text[:20]}…': {', '.join(issues)}")
         else:
@@ -320,7 +352,7 @@ async def _filter_feedback(
 
     questions = []
     for q in out.questions:
-        reason = rule_check_question(q) or (", ".join(check(q)) or None)
+        reason = check.question(q)
         if reason:
             problems.append(f"질문 '{q[:20]}…': {reason}")
         else:

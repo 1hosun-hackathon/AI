@@ -5,13 +5,14 @@ from pydantic import AfterValidator, BaseModel, Field
 CriterionKey = Literal["thesis", "evidence", "structure", "expression", "originality"]
 CRITERIA: tuple[str, ...] = get_args(CriterionKey)
 
-# key: (이름, 설명)
+# key: (이름, 설명). key는 API 계약이라 바꾸지 않고, 이름·설명만 리포트용 구조·논리 기준으로 쓴다(v3).
+# 내용·결론·입장은 어느 항목에서도 평가하지 않는다.
 CRITERIA_INFO: dict[str, tuple[str, str]] = {
-    "thesis": ("논지", "핵심 주장과 관점"),
-    "evidence": ("근거", "자료와 사례의 활용"),
-    "structure": ("구조", "글의 흐름과 구성"),
-    "expression": ("표현", "문장의 명확성과 전달력"),
-    "originality": ("독창성", "고유한 해석과 문제의식"),
+    "thesis": ("목적·주제 설정", "다루는 문제와 범위, 글의 목적이 분명한가"),
+    "evidence": ("근거와 출처", "주장마다 근거가 있고, 출처와 자기 해석이 구분되는가"),
+    "structure": ("구성", "서론·본론·결론의 역할과 문단 구성이 분명한가"),
+    "expression": ("표현", "문장이 정확하고 간결하며 용어가 일관된가"),
+    "originality": ("논리 전개", "비약 없이 이어지고 결론이 본론에서 도출되는가"),
 }
 
 

@@ -1,5 +1,6 @@
 from app.guardrails.citation import resolve_evidence
 from app.guardrails.ghostwriting import copied_ngrams, example_sentence_reasons, ghostwriting_issues
+from app.guardrails.neutrality import content_shift_reasons, one_sided_question
 from app.guardrails.questions import rule_check_question
 from app.llm.outputs import SentenceRef
 
@@ -25,6 +26,23 @@ def test_example_sentence_patterns():
     assert example_sentence_reasons("주장과 근거의 연결을 설명해 보세요.") == []
 
 
+def test_example_listing_is_not_example_sentence():
+    # "예:" 뒤에 항목만 나열하면 허용 (v3 평가 오탐)
+    assert example_sentence_reasons("자료를 얻은 방법(예: 설문 시기, 대상, 인원)을 밝혀 보세요.") == []
+
+
+def test_report_allows_short_overlap_and_shared_vocabulary():
+    ai = "다회용 컵 대여 및 회수 시스템을 구축하는 것이 필수적이다. 캠퍼스 내 다회용 컵 보관 및 세척 시설을 확충해야 한다."
+    user = "학생회관에 다회용 컵 무료 대여함을 설치했다."
+    # 학습자 글에도 있는 표현은 겹침으로 세지 않는다
+    assert copied_ngrams("두 글 모두 다회용 컵 무료 대여함을 다룬다.", ai + " 다회용 컵 무료 대여함", n=12, exclude=[user]) == set()
+    # 짧은 언급은 리포트에서 허용, 긴 문장 복사는 잡는다
+    short = "AI 글은 다회용 컵 대여 및 회수를 다룬다."
+    assert ghostwriting_issues(short, ai, n=12, max_shared=8) == []
+    long_copy = "AI 글처럼 캠퍼스 내 다회용 컵 보관 및 세척 시설을 확충해야 한다고 쓰세요."
+    assert ghostwriting_issues(long_copy, ai, n=12, max_shared=8)
+
+
 def test_concept_quotes_are_not_example_sentences():
     text = "내 글은 '결과'에 초점을 맞추었다면, AI 참고 글은 '과정의 성찰'을 강조한다."
     assert example_sentence_reasons(text) == []
@@ -34,6 +52,23 @@ def test_quoting_learner_own_sentence_is_allowed():
     user = "내 동생은 밤새 게임을 하다가 성적이 떨어졌다."
     text = "'내 동생은 밤새 게임을 하다가 성적이 떨어졌다'는 하나의 사례에 그칩니다."
     assert ghostwriting_issues(text, AI_DRAFT, n=12, allowed_quote_sources=[user]) == []
+
+
+def test_content_shift_rules():
+    # v2 평가에서 LLM 판정을 통과했던 실제 출력
+    leaked = "AI 참고 글이 제시하는 '학습 및 사고 심화 도구'로서의 AI 활용 가능성에 대해 자신의 입장을 재검토해 볼 필요가 있습니다."
+    assert content_shift_reasons(leaked)
+    assert content_shift_reasons("두 입장을 절충하는 방향으로 결론을 바꿔 보세요.")
+    assert content_shift_reasons("AI 글처럼 결론을 구성해 보세요.")
+    # 구성·근거·논리 보완은 통과
+    assert content_shift_reasons("결론이 본론의 어느 근거에서 나왔는지 연결을 보강해 보세요.") == []
+    assert content_shift_reasons("예상되는 반론을 한 문단으로 다뤄 보세요.") == []
+
+
+def test_one_sided_question():
+    assert one_sided_question("습관 기록이 삶의 질 향상에 미치는 긍정적인 영향은 무엇일까?")
+    assert one_sided_question("이 제도의 긍정적 측면과 부정적 측면은 무엇인가요?") is None
+    assert one_sided_question("이 결론은 본론의 어느 근거에서 나왔나요?") is None
 
 
 def test_question_rules():

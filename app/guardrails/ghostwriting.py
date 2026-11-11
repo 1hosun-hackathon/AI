@@ -9,7 +9,8 @@ from app.text.sentences import compact
 # 개념 인용('자기 조절')이 두 개 있을 때 그 사이 구간을 잘못 잡지 않게 하기 위함.
 _QUOTED = re.compile(r"[\"“”'‘’「『]([^\"“”'‘’」』]{15,}?[다요까][.?!]?)[\"“”'‘’」』]")
 _EXAMPLE_PATTERNS = [
-    re.compile(r"예\s*[:：]"),
+    # "예: 첫 문장에 주장을 넣는다."처럼 뒤에 완성 문장이 올 때만. "(예: 설문 시기, 대상)" 같은 항목 나열은 허용.
+    re.compile(r"예\s*[:：]\s*[^()\n,]{6,}?[다요][.\"”'’]?(\s|$)"),
     re.compile(r"예를\s*들(어|면)[^.?!]{0,40}(라고|처럼)\s*(쓰|써|작성|바꾸|바꿔|고치|고쳐)"),
     re.compile(r"(다음과|아래와)\s*같이\s*(고쳐|바꿔|수정|써|쓰)"),
     re.compile(r"(→|->)\s*\S"),
@@ -51,9 +52,12 @@ def ghostwriting_issues(
     n: int,
     exclude: Iterable[str] = (),
     allowed_quote_sources: Iterable[str] = (),
+    max_shared: int = 0,
 ) -> list[str]:
+    """max_shared: 허용할 겹침 n-gram 수. 종합 리포트처럼 AI 글을 언급할 수밖에 없는 필드는 짧은 겹침을 허용한다
+    (n=12일 때 8개 ≈ 공백 제외 19자 연속 일치)."""
     issues = example_sentence_reasons(text, allowed_quote_sources)
     copied = copied_ngrams(text, ai_draft, n, exclude)
-    if copied:
+    if len(copied) > max_shared:
         issues.append(f"참고 글과 겹치는 구절 {len(copied)}개")
     return issues

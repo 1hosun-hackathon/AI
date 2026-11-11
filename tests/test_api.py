@@ -12,7 +12,8 @@ TOPIC = "청소년의 스마트폰 사용 제한"
 USER = "청소년의 스마트폰 사용은 제한해야 한다. 내 동생은 밤새 게임을 하다가 성적이 떨어졌다. 그래서 학교에서 걷어야 한다."
 AI = "스마트폰 사용은 스스로 조절하도록 가르쳐야 한다. 통계청 조사에 따르면 과의존 위험군이 많다. 일괄 수거는 자기 조절 능력을 기를 기회를 빼앗는다."
 CLEAN_ACTION = "주장을 뒷받침할 근거의 종류를 넓혀 보세요."
-STANCE_SHIFT = "자기 조절 교육이라는 반대 입장도 받아들여 절충해 보세요."
+STANCE_SHIFT = "자기 조절 교육이라는 반대 입장도 받아들여 절충해 보세요."  # 규칙으로 잡힘
+SUBTLE_SHIFT = "스마트폰 사용의 교육적 장점을 결론에서 더 크게 다뤄 보세요."  # 규칙을 피해 LLM 판정으로 잡혀야 함
 GOOD_QUESTIONS = [
     "이 문제에서 가장 중요하게 지켜야 할 가치는 무엇인가요?",
     "반대 입장의 사람은 어떤 경험을 근거로 들까요?",
@@ -127,7 +128,7 @@ def test_analyze_end_to_end(client_factory):
     assert item["comparison"] == "내 글은 경험에, AI 글은 통계에 기댄다."
     # 유도 질문은 규칙 검사에서 빠지고 열린 질문 3개만 남는다
     assert res["questions"] == GOOD_QUESTIONS
-    assert res["prompt_version"] == "v2" and res["model"] == "fake-llm"
+    assert res["prompt_version"] == "v3" and res["model"] == "fake-llm"
 
 
 def test_ghostwritten_action_item_is_retried_then_dropped(client_factory):
@@ -140,15 +141,24 @@ def test_ghostwritten_action_item_is_retried_then_dropped(client_factory):
     assert any("참고 글과 겹치는 구절" in w for w in res["warnings"])
 
 
-def test_stance_shift_feedback_is_dropped_with_reason(client_factory):
+def test_explicit_stance_shift_is_caught_by_rule(client_factory):
+    client, llm = client_factory(scripted(action=STANCE_SHIFT, improvements=[STANCE_SHIFT, "근거의 종류를 넓혀 보세요."]))
+    res = _analyze(client)["result"]
+    assert all(it["action_item"] is None for it in res["items"])
+    assert len(llm.calls_for("TextScoreWithActionOutput")) == 10  # 규칙에 걸려 항목당 1회 재생성
+    assert res["improvements"] == ["근거의 종류를 넓혀 보세요."]
+    assert res["status"] == "partial"
+    assert any("절충 권유" in w for w in res["warnings"])
+
+
+def test_subtle_stance_shift_is_caught_by_llm_judge(client_factory):
     client, _ = client_factory(
-        scripted(action=STANCE_SHIFT, improvements=[STANCE_SHIFT, "근거의 종류를 넓혀 보세요."], shift_texts=[STANCE_SHIFT])
+        scripted(action=SUBTLE_SHIFT, improvements=[SUBTLE_SHIFT, "근거의 종류를 넓혀 보세요."], shift_texts=[SUBTLE_SHIFT])
     )
     res = _analyze(client)["result"]
     assert all(it["action_item"] is None for it in res["items"])
     assert res["improvements"] == ["근거의 종류를 넓혀 보세요."]
-    assert res["status"] == "partial"
-    assert any("입장을 바꾸거나 절충하라고 권함" in w for w in res["warnings"])
+    assert any("결론·관점을 바꾸라고 권함" in w for w in res["warnings"])
 
 
 def test_all_items_failing_fails_job(client_factory):

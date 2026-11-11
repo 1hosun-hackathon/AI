@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     llm_seed: int = 42
 
     # 프롬프트·가드레일
-    prompt_version: str = "v2"
+    prompt_version: str = "v3"
     guardrail_max_retry: int = 1
     ngram_n: int = 12
 
