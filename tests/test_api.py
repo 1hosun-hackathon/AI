@@ -212,3 +212,25 @@ def test_error_format(client_factory, settings):
 
     r = client.get("/ai/jobs/없는-작업")
     assert r.status_code == 404 and r.json()["error"]["code"] == "JOB_NOT_FOUND"
+
+
+def test_missing_verdict_is_judged_again(client_factory):
+    """판정이 빠진 문장은 한 번 더 묻고, 그 판정을 따른다."""
+    base = scripted()
+    judge_calls = []
+
+    def respond(messages, schema):
+        if (schema or {}).get("title") != "FeedbackCheckOutput":
+            return base(messages, schema)
+        lines = [ln for ln in messages[1]["content"].split("\n") if ln[:1].isdigit() and ". (" in ln]
+        judge_calls.append(lines)
+        if len(judge_calls) == 1:  # 첫 판정: 마지막 문장을 빠뜨린다
+            return {"verdicts": [{"index": i, "reason": "구성 보완 권유", "verdict": "ok"} for i in range(len(lines) - 1)]}
+        return {"verdicts": [{"index": 0, "reason": "답을 정해 줌", "verdict": "leading"}]}
+
+    client, _ = client_factory(respond)
+    res = _analyze(client)["result"]
+    assert len(judge_calls) == 2 and len(judge_calls[1]) == 1
+    assert GOOD_QUESTIONS[2] in judge_calls[1][0]  # 목록 끝의 질문만 다시 물음
+    assert res["questions"] == GOOD_QUESTIONS[:2]
+    assert any("답을 유도하는 질문" in w for w in res["warnings"])

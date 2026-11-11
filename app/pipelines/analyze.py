@@ -356,23 +356,35 @@ async def _judge(
     if not entries:
         return []
     kinds = {"action": "보완 방향", "improvement": "보완할 점", "question": "질문"}
-    listing = "\n".join(f"{i}. ({kinds[k]}) {t}" for i, (k, t) in enumerate(entries))
-    msgs: list[Message] = [
-        _system(ctx),
-        {
-            "role": "user",
-            "content": ctx.prompts.render(
-                "feedback_check", topic=topic, user_thesis=theses[0], ai_thesis=theses[1], entries=listing
-            ),
-        },
-    ]
-    try:
+    async def ask(idx: list[int]) -> dict[int, tuple[str, str]]:
+        """idx의 문장만 0부터 다시 번호를 매겨 판정을 받고, 원래 번호로 돌려준다."""
+        listing = "\n".join(f"{n}. ({kinds[entries[i][0]]}) {entries[i][1]}" for n, i in enumerate(idx))
+        msgs: list[Message] = [
+            _system(ctx),
+            {
+                "role": "user",
+                "content": ctx.prompts.render(
+                    "feedback_check", topic=topic, user_thesis=theses[0], ai_thesis=theses[1], entries=listing
+                ),
+            },
+        ]
         out = await generate_structured(ctx.llm, msgs, FeedbackCheckOutput, temperature=0.0)
+        return {idx[v.index]: (v.verdict, v.reason) for v in out.verdicts if 0 <= v.index < len(idx)}
+
+    try:
+        verdicts = await ask(list(range(len(entries))))
+        # 소형 모델은 목록 끝 문장의 판정을 빠뜨리곤 한다. 빠진 문장만 모아 한 번 더 묻는다.
+        missing = [i for i in range(len(entries)) if i not in verdicts]
+        if missing:
+            logger.info("피드백 판정 누락 %d개 재판정", len(missing))
+            verdicts.update(await ask(missing))
     except LLMError as e:
         logger.warning("피드백 판정 실패: %r", e)
         warnings.append("피드백 판정(입장 변경·유도 질문)을 건너뛰었습니다.")
         return [("ok", "")] * len(entries)
-    verdicts = {v.index: (v.verdict, v.reason) for v in out.verdicts}
+    missing = [i for i in range(len(entries)) if i not in verdicts]
+    if missing:
+        warnings.append(f"피드백 {len(missing)}개는 판정(입장 변경·유도 질문)을 받지 못했습니다.")
     return [verdicts.get(i, ("ok", "")) for i in range(len(entries))]
 
 
