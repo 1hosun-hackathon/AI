@@ -11,6 +11,16 @@ ERRORS: dict[str, tuple[int, bool, str]] = {
     "JOB_NOT_FOUND": (404, True, "분석 작업을 찾을 수 없어요. 다시 요청해 주세요."),
     "QUEUE_FULL": (429, True, "요청이 많아 잠시 후 다시 시도해 주세요."),
     "INTERNAL": (500, True, "일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요."),
+    "UNAUTHORIZED": (401, False, "API 키가 없거나 올바르지 않아요."),
+    # 노션 API 명세 경로(/api/v1)에서 쓰는 코드
+    "VALIDATION_ERROR": (400, False, "입력값을 확인해 주세요."),
+    "EMPTY_CONTENT": (400, False, "글 내용을 입력해 주세요."),
+    "FILE_TYPE_NOT_ALLOWED": (400, False, "PDF·PPT·문서·이미지 파일만 올릴 수 있어요."),
+    "FILE_TOO_LARGE": (413, False, "파일은 10MB 이하, 5개까지 올릴 수 있어요."),
+    "NO_CHANGES": (409, False, "직전 제출본과 달라진 내용이 없어요."),
+    "ANALYSIS_NOT_FOUND": (404, True, "분석을 찾을 수 없어요. 다시 제출해 주세요."),
+    "ANALYSIS_NOT_READY": (409, True, "분석이 아직 끝나지 않았어요."),
+    "ANALYSIS_NOT_FAILED": (409, False, "실패한 분석만 다시 시도할 수 있어요."),
 }
 
 

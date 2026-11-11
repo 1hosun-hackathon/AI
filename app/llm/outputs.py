@@ -50,7 +50,8 @@ class SummaryOutput(BaseModel):
 
 class FeedbackVerdict(BaseModel):
     index: int
-    reason: Text  # 판정 전에 이유를 먼저 쓰게 해서 대충 찍는 판정을 줄인다
+    # 판정 전에 해당 기준을 먼저 짚게 해서 대충 찍는 판정을 줄인다. 문장을 옮겨 적지 않게 짧은 구절로만 받는다.
+    reason: Text = Field(description="해당하는 기준 (15자 안팎의 짧은 구절)")
     verdict: Literal["ok", "stance_shift", "leading"]
 
 

@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import hashlib
 import logging
 from dataclasses import dataclass, field
 
@@ -110,7 +111,7 @@ def _observations(key: str, paragraphs: list[list[str]]) -> str | None:
 
 
 async def _score_text(
-    ctx: Ctx, topic: str, key: str, paragraphs: list[list[str]], *, with_action: bool, check: _Checker
+    ctx: Ctx, topic: str, key: str, paragraphs: list[list[str]], *, with_action: bool, check: _Checker | None
 ) -> tuple[TextScoreOutput, list[str]]:
     """글 한 편을 항목 하나로 채점. with_action이면 보완 방향도 받고 대필 검사 후 재생성한다."""
     s = ctx.settings
@@ -201,6 +202,50 @@ async def _compare(
     return {c.key: relabel(c.comparison, names) for c in out.comparisons}
 
 
+_AI_SCORE_CACHE_MAX = 256
+
+
+def ai_score_key(ctx: Ctx, topic: str, ai_text: str) -> str:
+    raw = "\n".join([ctx.prompts.version, ctx.llm.model_name, topic, ai_text])
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+async def _score_ai_all(ctx: Ctx, topic: str, ai_text: str) -> dict[str, tuple[TextScoreOutput, list[str]]]:
+    paragraphs = split_paragraphs(ai_text)
+    results = await asyncio.gather(
+        *(_score_text(ctx, topic, k, paragraphs, with_action=False, check=None) for k in CRITERIA),
+        return_exceptions=True,
+    )
+    return {k: r for k, r in zip(CRITERIA, results) if not isinstance(r, BaseException)}
+
+
+def prescore_ai(ctx: Ctx, topic: str, ai_text: str) -> None:
+    """AI 작성 글은 생성 뒤 바뀌지 않으므로, 학습자가 초안을 쓰는 동안 미리 채점해 둔다(백그라운드).
+    analyze가 같은 주제·같은 글을 받으면 이 결과를 쓰고 AI 글 채점 호출(항목 5회)을 건너뛴다."""
+    if not ai_text.strip():
+        return
+    key = ai_score_key(ctx, topic, ai_text)
+    cache = ctx.ai_scores
+    if key in cache:
+        cache.move_to_end(key)
+        return
+    cache[key] = asyncio.create_task(_score_ai_all(ctx, topic, ai_text))
+    while len(cache) > _AI_SCORE_CACHE_MAX:
+        _, old = cache.popitem(last=False)
+        old.cancel()
+
+
+async def _cached_ai_scores(ctx: Ctx, topic: str, ai_text: str) -> dict[str, tuple[TextScoreOutput, list[str]]]:
+    task = ctx.ai_scores.get(ai_score_key(ctx, topic, ai_text))
+    if task is None:
+        return {}
+    try:
+        return await asyncio.shield(task)  # 진행 중이면 끝나기를 기다린다
+    except Exception as e:  # noqa: BLE001 - 미리 채점이 실패하면 평소처럼 채점한다
+        logger.warning("AI 글 미리 채점 결과를 쓰지 못함: %r", e)
+        return {}
+
+
 async def evaluate_items(
     ctx: Ctx,
     topic: str,
@@ -217,14 +262,15 @@ async def evaluate_items(
     ai_s = [s for p in ai_p for s in p]
     check = _Checker(ctx, topic, req, user_text, ai_text)
 
-    ai_keys = [k for k in CRITERIA if k not in fixed_ai]
+    cached = {} if len(fixed_ai) == len(CRITERIA) else await _cached_ai_scores(ctx, topic, ai_text)
+    ai_keys = [k for k in CRITERIA if k not in fixed_ai and k not in cached]
     results = await asyncio.gather(
         *(_score_text(ctx, topic, k, user_p, with_action=True, check=check) for k in CRITERIA),
         *(_score_text(ctx, topic, k, ai_p, with_action=False, check=check) for k in ai_keys),
         return_exceptions=True,
     )
     user_res = dict(zip(CRITERIA, results[: len(CRITERIA)]))
-    ai_res = dict(zip(ai_keys, results[len(CRITERIA) :]))
+    ai_res = {**cached, **dict(zip(ai_keys, results[len(CRITERIA) :]))}
 
     scored: list[_Scored] = []
     failed: list[str] = []
@@ -310,23 +356,35 @@ async def _judge(
     if not entries:
         return []
     kinds = {"action": "보완 방향", "improvement": "보완할 점", "question": "질문"}
-    listing = "\n".join(f"{i}. ({kinds[k]}) {t}" for i, (k, t) in enumerate(entries))
-    msgs: list[Message] = [
-        _system(ctx),
-        {
-            "role": "user",
-            "content": ctx.prompts.render(
-                "feedback_check", topic=topic, user_thesis=theses[0], ai_thesis=theses[1], entries=listing
-            ),
-        },
-    ]
-    try:
+    async def ask(idx: list[int]) -> dict[int, tuple[str, str]]:
+        """idx의 문장만 0부터 다시 번호를 매겨 판정을 받고, 원래 번호로 돌려준다."""
+        listing = "\n".join(f"{n}. ({kinds[entries[i][0]]}) {entries[i][1]}" for n, i in enumerate(idx))
+        msgs: list[Message] = [
+            _system(ctx),
+            {
+                "role": "user",
+                "content": ctx.prompts.render(
+                    "feedback_check", topic=topic, user_thesis=theses[0], ai_thesis=theses[1], entries=listing
+                ),
+            },
+        ]
         out = await generate_structured(ctx.llm, msgs, FeedbackCheckOutput, temperature=0.0)
+        return {idx[v.index]: (v.verdict, v.reason) for v in out.verdicts if 0 <= v.index < len(idx)}
+
+    try:
+        verdicts = await ask(list(range(len(entries))))
+        # 소형 모델은 목록 끝 문장의 판정을 빠뜨리곤 한다. 빠진 문장만 모아 한 번 더 묻는다.
+        missing = [i for i in range(len(entries)) if i not in verdicts]
+        if missing:
+            logger.info("피드백 판정 누락 %d개 재판정", len(missing))
+            verdicts.update(await ask(missing))
     except LLMError as e:
         logger.warning("피드백 판정 실패: %r", e)
         warnings.append("피드백 판정(입장 변경·유도 질문)을 건너뛰었습니다.")
         return [("ok", "")] * len(entries)
-    verdicts = {v.index: (v.verdict, v.reason) for v in out.verdicts}
+    missing = [i for i in range(len(entries)) if i not in verdicts]
+    if missing:
+        warnings.append(f"피드백 {len(missing)}개는 판정(입장 변경·유도 질문)을 받지 못했습니다.")
     return [verdicts.get(i, ("ok", "")) for i in range(len(entries))]
 
 
