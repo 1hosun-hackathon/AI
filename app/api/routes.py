@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from app.api.deps import check_lengths, get_ctx, get_jobs
 from app.errors import AppError
@@ -14,8 +14,10 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health(ctx: Ctx = Depends(get_ctx)) -> dict:
+async def health(request: Request, ctx: Ctx = Depends(get_ctx)) -> dict:
     llm_up = await ctx.llm.ping()
+    if not getattr(request.state, "authed", True):  # 키가 없으면 정상 여부만 알려 준다
+        return {"status": "ok" if llm_up else "degraded"}
     return {
         "status": "ok" if llm_up else "degraded",
         "llm": "up" if llm_up else "down",
