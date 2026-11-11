@@ -29,7 +29,7 @@ from app.schemas.analysis import AnalysisResult, AnalyzeRequest, Evidence, ItemR
 from app.schemas.common import CRITERIA, CRITERIA_INFO, Requirements
 from app.text.labels import relabel
 from app.text.sentences import numbered_paragraphs, split_paragraphs
-from app.text.structure import observe, observe_flow, observe_sources
+from app.text.structure import SCORE_CAP, observe, observe_flow, observe_sources, score_cap
 
 logger = logging.getLogger(__name__)
 
@@ -135,16 +135,25 @@ async def _score_text(
     ]
     model = TextScoreWithActionOutput if with_action else TextScoreOutput
     out = await generate_structured(ctx.llm, msgs, model, temperature=s.llm_temperature)
-    if not with_action:
-        return out, []
-    issues = check.advice(out.action)
-    for _ in range(s.guardrail_max_retry):
-        if not issues:
-            break
-        retry = msgs + [{"role": "assistant", "content": out.model_dump_json()}, _retry_note(ctx, issues)]
-        out = await generate_structured(ctx.llm, retry, model, temperature=s.llm_temperature)
+    issues: list[str] = []
+    if with_action:
         issues = check.advice(out.action)
-    return out, issues
+        for _ in range(s.guardrail_max_retry):
+            if not issues:
+                break
+            retry = msgs + [{"role": "assistant", "content": out.model_dump_json()}, _retry_note(ctx, issues)]
+            out = await generate_structured(ctx.llm, retry, model, temperature=s.llm_temperature)
+            issues = check.advice(out.action)
+    return _apply_cap(key, paragraphs, out), issues
+
+
+def _apply_cap(key: str, paragraphs: list[list[str]], out: TextScoreOutput) -> TextScoreOutput:
+    """서버 관찰로 확실한 경우 점수 상한을 건다. 요약과 점수가 어긋나지 않게 사유를 요약에 덧붙인다."""
+    reason = score_cap(key, paragraphs)
+    if reason is None or out.score <= SCORE_CAP:
+        return out
+    logger.info("점수 상한 적용 %s: %d → %d (%s)", key, out.score, SCORE_CAP, reason)
+    return out.model_copy(update={"score": SCORE_CAP, "summary": f"{out.summary} 다만 {reason}."})
 
 
 @dataclass

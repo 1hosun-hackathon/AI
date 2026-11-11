@@ -132,6 +132,33 @@ def observe_flow(paragraphs: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+_EXPLICIT_CONCLUSION = re.compile(r"^(정리하면|결론적으로|요약하면|종합하면|이상을\s*정리하면)")
+SCORE_CAP = 3
+
+
+def score_cap(key: str, paragraphs: list[list[str]]) -> str | None:
+    """오탐이 거의 없는 관찰일 때만 점수 상한(3점)을 건다. 상한을 건 사유를 돌려준다.
+
+    모델은 루브릭에 같은 규칙을 적어도 뒤섞은 글 3편 중 2편에 논리 전개 4점을 줬다(v4 평가).
+    '따라서'·'~해야 한다'는 본론 중간에도 흔해서 상한 조건에서 뺀다. 두 글에 똑같이 적용한다.
+    """
+    sentences, headings = _body_sentences(paragraphs)
+    body = [(i, s) for i, s in enumerate(sentences, 1) if i not in headings]
+    if not body:
+        return None
+    if key == "evidence":
+        if not any(source_kind(s) == "source" for _, s in body):
+            return "출처나 자료를 얻은 방법을 밝힌 문장이 없다"
+        return None
+    if key == "originality":
+        if _BACKREF.search(body[0][1]):
+            return "글의 첫 문장이 앞 내용을 받는 말로 시작한다"
+        concl = next((i for i, s in body if _EXPLICIT_CONCLUSION.search(s)), None)
+        if concl is not None and any(i > concl and _is_data(s) for i, s in body):
+            return "결론을 여는 문장 뒤에 수치나 자료가 다시 나와 결론이 근거보다 먼저 나온다"
+    return None
+
+
 def observe_sources(paragraphs: list[list[str]]) -> str:
     sentences, headings = _body_sentences(paragraphs)
     if not sentences:

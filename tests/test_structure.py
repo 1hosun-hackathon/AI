@@ -89,3 +89,19 @@ def test_heading_numbers_are_not_data():
     facts = observe_flow(split_paragraphs(text))
     assert "새로 나오는 수치·자료 문장: 없음" in facts
     assert "수치(숫자)가 들어간 문장: 0개" in observe_sources(split_paragraphs(text))
+
+
+def test_score_cap():
+    from app.text.structure import score_cap
+
+    assert score_cap("evidence", split_paragraphs(GOOD)) is None
+    assert score_cap("originality", split_paragraphs(GOOD)) is None
+    assert score_cap("evidence", split_paragraphs("연구에 따르면 효과가 있다고 한다. 그래서 늘려야 한다."))
+    # 첫 문장이 앞 내용을 받는 말로 시작
+    assert score_cap("originality", split_paragraphs(SCRAMBLED))
+    late = "정리하면, 근무 시간이 영향을 준다. 설문에서 주 15시간 이상 일하는 학생의 학점이 낮았다."
+    assert score_cap("originality", split_paragraphs(late))
+    # 본론 중간의 '따라서'·'~해야 한다' 뒤 자료는 상한을 걸지 않는다
+    mid = "이 글은 근무 시간을 다룬다. 따라서 근무 시간을 줄여야 한다. 설문에서 학점이 낮았다. 정리하면, 시간이 중요하다."
+    assert score_cap("originality", split_paragraphs(mid)) is None
+    assert score_cap("structure", split_paragraphs(SCRAMBLED)) is None
