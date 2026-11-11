@@ -1,7 +1,7 @@
 from app.guardrails.citation import resolve_evidence
 from app.guardrails.ghostwriting import copied_ngrams, example_sentence_reasons, ghostwriting_issues
 from app.guardrails.neutrality import content_shift_reasons, one_sided_question
-from app.guardrails.questions import rule_check_question
+from app.guardrails.questions import normalize_question, rule_check_question
 from app.llm.outputs import SentenceRef
 
 AI_DRAFT = "스마트폰 일괄 수거는 청소년이 자기 조절 능력을 기를 기회를 빼앗는다는 점에서 바람직하지 않다."
@@ -77,6 +77,14 @@ def test_question_rules():
     assert rule_check_question("무엇이 중요한가.") == "물음표로 끝나지 않음"
     assert rule_check_question("좋은 질문이다. 왜 그런가?") == "한 문장이 아님"
     assert rule_check_question("통계를 더 넣어야 하지 않을까요?") == "답을 유도하는 어미"
+
+
+def test_normalize_question_adds_missing_question_mark():
+    assert normalize_question("자료와 해석을 어떻게 구분했나요.") == "자료와 해석을 어떻게 구분했나요?"
+    assert normalize_question("이 결론은 어느 근거에서 나왔는가") == "이 결론은 어느 근거에서 나왔는가?"
+    # 명령문은 질문으로 바꾸지 않는다
+    assert normalize_question("근거를 점검해 보세요.") == "근거를 점검해 보세요."
+    assert rule_check_question(normalize_question("근거를 점검해 보세요.")) == "물음표로 끝나지 않음"
 
 
 def test_resolve_evidence_drops_out_of_range_and_duplicates():

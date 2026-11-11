@@ -97,9 +97,10 @@ def variant_checks(samples: list[dict], records: list[dict]) -> None:
         if not {"weak", "strong_a", "strong_b", "scrambled"} <= v.keys():
             continue
         w, a, b, sc = (_mean(v[k]) for k in ("weak", "strong_a", "strong_b", "scrambled"))
-        neutral = abs(a - b)
-        struct = _mean(v["strong_a"], struct_logic) - _mean(v["scrambled"], struct_logic)
-        level = min(a, b) - w
+        # 평균 점수의 부동소수점 오차(0.4000000001 > 0.4)로 판정이 뒤집히지 않도록 반올림
+        neutral = round(abs(a - b), 6)
+        struct = round(_mean(v["strong_a"], struct_logic) - _mean(v["scrambled"], struct_logic), 6)
+        level = round(min(a, b) - w, 6)
         ok_n, ok_s, ok_l = neutral <= 0.4, struct >= 1.0, level >= 1.0
         passed["neutral"] += ok_n
         passed["structure"] += ok_s
