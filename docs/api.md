@@ -5,6 +5,21 @@
 - 모든 요청·응답은 JSON, 문자 인코딩 UTF-8.
 - 모든 성공 응답에 `prompt_version`, `model`이 들어간다.
 - 글 한 편은 최대 3000자(`MAX_DRAFT_CHARS`).
+- 기계가 읽는 명세는 `docs/openapi.json`이다(`python scripts/export_openapi.py`로 다시 만든다). 클라이언트 코드 생성이나 Postman 가져오기에 쓴다.
+
+## 연동 개발용 가짜 응답 모드
+
+Ollama·GPU 없이 API를 붙여 볼 수 있다. 문장 분리, 가드레일, job, 응답 조립은 실제 코드가 돌고 LLM 응답만 고정 문장으로 바뀐다.
+
+```bash
+LLM_PROVIDER=mock uvicorn app.main:app --port 8000
+# job 폴링 화면을 확인하려면 호출마다 지연을 준다 (analyze 1건 ≈ LLM 13회)
+LLM_PROVIDER=mock MOCK_DELAY_SEC=0.5 uvicorn app.main:app --port 8000
+```
+
+- 응답의 `model`이 `"mock-llm"`이고, 문장은 모두 "가짜 응답:"으로 시작한다.
+- 점수는 입력 글의 해시로 정해져 같은 입력이면 같은 결과가 나온다(2~5점). 실제 평가 품질과는 관계없다.
+- `/ai/dependency`는 원래 LLM을 쓰지 않지만, 가짜 모드에서는 임베딩도 글자 기반 가짜 벡터라 값이 실제와 다르다.
 
 ## 엔드포인트
 
