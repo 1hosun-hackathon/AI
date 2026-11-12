@@ -136,14 +136,21 @@ def _zip_xml(data: bytes, want, order: re.Pattern | None) -> list[str]:
         if order:
             names.sort(key=lambda n: int(order.match(n).group(1)))
         paras: list[str] = []
-        total = 0
+        budget = _MAX_ZIP_TOTAL_BYTES
         for name in names:
-            size = zf.getinfo(name).file_size
-            total += size
-            if size > _MAX_ZIP_ENTRY_BYTES or total > _MAX_ZIP_TOTAL_BYTES:
-                raise ExtractError("압축을 푼 내용이 너무 큼")
-            paras += _xml_paragraphs(ET.fromstring(zf.read(name)))
+            raw = _read_capped(zf, name, min(_MAX_ZIP_ENTRY_BYTES, budget))
+            budget -= len(raw)
+            paras += _xml_paragraphs(ET.fromstring(raw))
         return paras
+
+
+def _read_capped(zf: zipfile.ZipFile, name: str, limit: int) -> bytes:
+    """압축을 풀면서 실제로 읽은 크기로 제한한다. 헤더의 file_size는 조작할 수 있어 믿지 않는다."""
+    with zf.open(name) as f:
+        raw = f.read(limit + 1)
+    if len(raw) > limit:
+        raise ExtractError("압축을 푼 내용이 너무 큼")
+    return raw
 
 
 def _dedupe(paras: list[str]) -> list[str]:

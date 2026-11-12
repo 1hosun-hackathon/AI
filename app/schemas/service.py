@@ -45,7 +45,7 @@ class AiWriting(BaseModel):
 
 
 class TrainingCreateRequest(Task):
-    """multipart/form-data의 request 파트(JSON). files 파트는 받기만 하고 AI 작성 글에는 쓰지 않는다."""
+    """multipart/form-data의 request 파트(JSON). files 파트에서 뽑은 글은 AI 작성 글의 참고 자료로 쓴다."""
 
     trainingId: int | None = None
     timerMinutes: int | None = None
@@ -54,12 +54,14 @@ class TrainingCreateRequest(Task):
 class Attachment(BaseModel):
     fileName: str
     fileSize: int
+    used: bool = Field(False, description="AI 작성 글에 참고 자료로 반영했는지")
+    usedChars: int = Field(0, description="참고 자료로 넣은 글자 수 (앞부분부터)")
 
 
 class TrainingCreateResponse(BaseModel):
     trainingId: int | None
     aiWriting: AiWriting = Field(description="4-2 aiWriting으로 저장할 AI 작성 글")
-    attachments: list[Attachment] = Field([], description="받은 첨부파일 (AI 작성 글에는 반영하지 않음)")
+    attachments: list[Attachment] = Field([], description="받은 첨부파일과 반영 여부. 반영하지 못한 파일은 warnings에 이유가 남는다")
     charCount: int
     warnings: list[str] = []
     promptVersion: str
