@@ -29,7 +29,7 @@ AI 서버는 훈련·글 버전을 저장하지 않으므로, 명세의 요청 �
 
 | ID | 경로 | 방식 | AI 서버가 하는 일 |
 |---|---|---|---|
-| 2-1 | `POST /api/v1/trainings` | 동기 (수십 초) | AI 작성 글 생성. 첨부파일은 받기만 함 |
+| 2-1 | `POST /api/v1/trainings` | 동기 (수십 초) | AI 작성 글 생성. 첨부파일 글을 참고 자료로 반영 |
 | 3-2 | `POST /api/v1/trainings/{trainingId}/draft` | 비동기 (202) | 초안 비교 분석 시작 |
 | 3-4 | `POST /api/v1/trainings/{trainingId}/revisions` | 비동기 (202) | 수정본 재분석 + 지난 `reflectPoint` 반영 여부 |
 | 3-5 | `POST /api/v1/trainings/{trainingId}/complete` | 동기, LLM 미사용 | 자기 사고 비율·AI 의존도(%) |
@@ -50,11 +50,14 @@ AI 서버는 훈련·글 버전을 저장하지 않으므로, 명세의 요청 �
   "requirements": "800~1,000자, 근거 2개 이상", "timerMinutes": 15 }
 // 201 응답: aiWriting을 저장
 { "trainingId": 12, "aiWriting": { "content": "..." },
-  "attachments": [ { "fileName": "IPCC_요약.pdf", "fileSize": 482113 } ],
+  "attachments": [ { "fileName": "IPCC_요약.pdf", "fileSize": 482113, "used": true, "usedChars": 3000 } ],
   "charCount": 930, "warnings": [], "promptVersion": "v4", "model": "gemma4:e2b-it-qat" }
 ```
 
-- 첨부파일은 형식·크기만 검사하고 AI 작성 글에는 반영하지 않는다. 허용 형식은 PDF·PPT(X)·DOC(X)·HWP(X)·TXT·MD·이미지(PNG, JPG, GIF, WEBP)다. 파일당 10MB, 5개까지 받는다.
+- 허용 형식은 PDF·PPT(X)·DOC(X)·HWP(X)·TXT·MD·이미지(PNG, JPG, GIF, WEBP)다. 파일당 10MB, 5개까지 받는다.
+- 첨부파일에서 글자를 뽑아 AI 작성 글의 참고 자료로 넣는다. 글을 뽑는 형식은 PDF·PPTX·DOCX·HWPX·TXT·MD다. 넣는 글자 수는 합계 3,000자(`ATTACHMENT_MAX_CHARS`)를 글을 뽑을 수 있는 파일 수로 나눠, 파일마다 앞부분부터 담는다.
+- 예전 형식(PPT·DOC·HWP), 이미지, 스캔한 PDF(글자 없음), 손상·암호 파일은 받기만 하고 반영하지 않는다. 요청은 성공하고, 해당 파일은 `used: false`로 표시되며 이유가 `warnings`에 남는다.
+- 3-2·3-4에서 `aiWriting`이 비어 있어 분석 job이 AI 작성 글을 새로 만들 때는 첨부파일이 없으므로 과제 조건만으로 만든다.
 - 형식이 맞지 않으면 400 `FILE_TYPE_NOT_ALLOWED`, 크기나 개수를 넘으면 413 `FILE_TOO_LARGE`.
 - `startedAt`, `timerEndsAt`, `attachmentId`는 백엔드가 정하는 값이라 응답에 없다.
 - 응답을 보낸 뒤 AI 서버가 백그라운드에서 AI 작성 글을 미리 채점한다(항목 5개). 3-2에서 같은 주제·같은 AI 글이 오면 이 결과를 써서 분석 시간이 줄어든다. 따라서 3-2에는 2-1에서 받은 `aiWriting`을 고치지 말고 그대로 보낸다.

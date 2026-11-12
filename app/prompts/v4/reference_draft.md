@@ -5,3 +5,5 @@
 분량: $length
 추가 조건: $extra
 $size_guide
+
+$references

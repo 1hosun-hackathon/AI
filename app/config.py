@@ -45,6 +45,8 @@ class Settings(BaseSettings):
 
     # 입력·job
     max_draft_chars: int = 3000
+    # 2-1 첨부파일에서 뽑아 AI 작성 글 프롬프트에 넣는 글자 수 합계 (파일 수로 나눠 배분, 0이면 반영 안 함)
+    attachment_max_chars: int = 3000
     job_ttl_sec: int = 3600
     job_queue_max: int = 20
     warmup: bool = True

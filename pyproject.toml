@@ -16,6 +16,7 @@ dependencies = [
     "kiwipiepy>=0.17",
     "numpy>=1.26",
     "python-multipart>=0.0.9",
+    "pypdf>=4",
 ]
 
 [project.optional-dependencies]
