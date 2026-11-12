@@ -192,6 +192,18 @@ def test_training_create_without_attachments_has_no_reference_block(client_facto
     assert "참고 자료" not in llm.calls[0][0][1]["content"]
 
 
+def test_reference_draft_caps_reference_length(client_factory, settings):
+    client, llm = client_factory(scripted())
+    budget = settings.attachment_max_chars
+    r = client.post("/ai/reference-draft", json={"topic": TOPIC, "references": ["뷁" * 10_000, "똠" * 10_000]})
+    assert r.status_code == 200, r.json()
+    prompt = llm.calls[0][0][1]["content"]
+    assert prompt.count("뷁") == budget // 2 and prompt.count("똠") == budget // 2
+
+    r = client.post("/ai/reference-draft", json={"topic": TOPIC, "references": ["자료"] * 6})
+    assert r.status_code in (400, 422)
+
+
 def test_analysis_list_by_training(client_factory):
     client, _ = client_factory(scripted())
     _draft(client, analysis_id=20)

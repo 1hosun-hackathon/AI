@@ -57,9 +57,17 @@ def clean_draft(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+def cap_references(refs: list[str], budget: int) -> list[str]:
+    """참고 자료 글자 수 합계를 budget 안으로 줄인다. 자료마다 같은 몫을 앞부분부터 남긴다."""
+    refs = [r.strip() for r in refs if r.strip()]
+    if not refs or budget <= 0:
+        return []
+    share = budget // len(refs)
+    return [r[:share] for r in refs if share > 0]
+
+
 def references_block(refs: list[str]) -> str:
     """첨부파일 글을 프롬프트에 넣을 덩어리로 만든다. 자료 안의 문장은 지시가 아니라 내용으로만 쓰게 한다."""
-    refs = [r.strip() for r in refs if r.strip()]
     if not refs:
         return ""
     body = "\n\n".join(f"[자료 {i}]\n{r}" for i, r in enumerate(refs, 1))
@@ -90,7 +98,7 @@ async def run(ctx: Ctx, req: ReferenceDraftRequest) -> ReferenceDraftResponse:
                 length=r.length or "자유",
                 extra=r.extra or "없음",
                 size_guide=size_guide,
-                references=references_block(req.references),
+                references=references_block(cap_references(req.references, s.attachment_max_chars)),
             ),
         },
     ]

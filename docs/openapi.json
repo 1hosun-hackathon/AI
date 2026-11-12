@@ -1709,7 +1709,9 @@
               "type": "string"
             },
             "type": "array",
+            "maxItems": 5,
             "title": "References",
+            "description": "참고 자료 글 (자료 하나당 한 덩어리). 합계 ATTACHMENT_MAX_CHARS자까지만 쓰고 나머지는 자른다",
             "default": []
           }
         },
