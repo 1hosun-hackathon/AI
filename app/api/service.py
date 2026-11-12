@@ -10,11 +10,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import PurePath
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from app.api.deps import check_lengths, get_ctx, get_jobs
 from app.api.routes import _submit
+from app.attachments.extract import SUPPORTED_EXT, ExtractError, UnsupportedFormat, extract_paragraphs
 from app.errors import AppError
 from app.jobs.store import JobFactory, JobStore
 from app.pipelines import analyze, dependency, reanalyze, reference_draft
@@ -53,7 +55,8 @@ router = APIRouter(prefix="/api/v1", tags=["노션 API 명세"])
 _KST = timezone(timedelta(hours=9))
 _STATUS = {"queued": "PENDING", "running": "GENERATING", "done": "SUCCESS", "failed": "FAILED"}
 
-# 2-1 첨부파일: PDF·PPT·문서·이미지, 파일당 10MB, 5개까지(명세 가정값)
+# 2-1 첨부파일: PDF·PPT·문서·이미지, 파일당 10MB, 5개까지(명세 가정값).
+# 받는 형식(_ALLOWED_EXT)과 글을 뽑는 형식(extract.SUPPORTED_EXT)은 다르다. 나머지는 받기만 하고 경고를 남긴다.
 _ALLOWED_EXT = {
     ".pdf", ".ppt", ".pptx", ".doc", ".docx", ".hwp", ".hwpx", ".txt", ".md",
     ".png", ".jpg", ".jpeg", ".gif", ".webp",
@@ -200,7 +203,7 @@ def _lookup(request: Request, jobs: JobStore, analysis_id: int):
     return entry, job
 
 
-async def _parse_training_create(request: Request) -> tuple[TrainingCreateRequest, list[Attachment]]:
+async def _parse_training_create(request: Request) -> tuple[TrainingCreateRequest, list[tuple[str, bytes]]]:
     """2-1 요청: multipart/form-data(request 파트 JSON + files 파트 0개 이상) 또는 JSON 본문."""
     try:
         if request.headers.get("content-type", "").startswith("multipart/form-data"):
@@ -219,15 +222,47 @@ async def _parse_training_create(request: Request) -> tuple[TrainingCreateReques
 
     if len(files) > _MAX_FILES:
         raise AppError("FILE_TOO_LARGE")
-    attachments = []
+    uploads = []
     for f in files:
         if PurePath(f.filename).suffix.lower() not in _ALLOWED_EXT:
             raise AppError("FILE_TYPE_NOT_ALLOWED")
-        size = len(await f.read())  # 첨부 내용은 쓰지 않고 크기만 확인한다
-        if size > _MAX_FILE_BYTES:
+        data = await f.read()
+        if len(data) > _MAX_FILE_BYTES:
             raise AppError("FILE_TOO_LARGE")
-        attachments.append(Attachment(fileName=f.filename, fileSize=size))
-    return req, attachments
+        uploads.append((f.filename, data))
+    return req, uploads
+
+
+def _read_attachments(uploads: list[tuple[str, bytes]], budget: int) -> tuple[list[Attachment], list[str], list[str]]:
+    """첨부파일에서 글을 뽑는다. 글자 수 예산은 글을 뽑을 수 있는 파일 수로 나눈다.
+
+    반환: (응답용 첨부 목록, 참고 자료 글 목록, 경고 목록). 읽지 못한 파일은 요청을 실패시키지 않고 경고만 남긴다.
+    """
+    readable = [n for n, _ in uploads if PurePath(n).suffix.lower() in SUPPORTED_EXT]
+    share = budget // len(readable) if readable else 0
+    attachments, refs, warnings = [], [], []
+    for name, data in uploads:
+        att = Attachment(fileName=name, fileSize=len(data))
+        attachments.append(att)
+        if share <= 0:
+            if budget > 0:
+                warnings.append(f"첨부파일 '{name}'은 글자를 읽을 수 없는 형식이라 AI 작성 글에 반영하지 않았어요.")
+            continue
+        try:
+            paras = extract_paragraphs(name, data, share)
+        except UnsupportedFormat:
+            warnings.append(f"첨부파일 '{name}'은 글자를 읽을 수 없는 형식이라 AI 작성 글에 반영하지 않았어요.")
+            continue
+        except ExtractError:
+            warnings.append(f"첨부파일 '{name}'을 읽지 못해 AI 작성 글에 반영하지 않았어요(손상 또는 암호).")
+            continue
+        text = "\n".join(paras)
+        if not text.strip():
+            warnings.append(f"첨부파일 '{name}'에서 글자를 찾지 못해 AI 작성 글에 반영하지 않았어요(스캔 이미지일 수 있음).")
+            continue
+        att.used, att.usedChars = True, sum(map(len, paras))
+        refs.append(text)
+    return attachments, refs, warnings
 
 
 _TRAINING_CREATE_BODY = {
@@ -253,16 +288,21 @@ _TRAINING_CREATE_BODY = {
 
 @router.post("/trainings", status_code=201, response_model=TrainingCreateResponse, openapi_extra=_TRAINING_CREATE_BODY)
 async def create_training(request: Request, ctx: Ctx = Depends(get_ctx)):
-    """2-1 훈련 생성: 과제 조건만으로 AI 작성 글을 만든다(동기, 수십 초). 첨부파일은 받기만 하고 글에 반영하지 않는다."""
-    req, attachments = await _parse_training_create(request)
-    res = await reference_draft.run(ctx, ReferenceDraftRequest(topic=req.topic, requirements=_requirements(req)))
+    """2-1 훈련 생성: 과제 조건과 첨부파일 글로 AI 작성 글을 만든다(동기, 수십 초)."""
+    req, uploads = await _parse_training_create(request)
+    attachments, refs, file_warnings = await run_in_threadpool(
+        _read_attachments, uploads, ctx.settings.attachment_max_chars
+    )
+    res = await reference_draft.run(
+        ctx, ReferenceDraftRequest(topic=req.topic, requirements=_requirements(req), references=refs)
+    )
     analyze.prescore_ai(ctx, req.topic, res.draft)  # 학습자가 초안을 쓰는 동안 AI 글을 미리 채점
     return TrainingCreateResponse(
         trainingId=req.trainingId,
         aiWriting=AiWriting(content=res.draft),
         attachments=attachments,
         charCount=res.char_count,
-        warnings=res.warnings,
+        warnings=file_warnings + res.warnings,
         promptVersion=res.prompt_version,
         model=res.model,
     )

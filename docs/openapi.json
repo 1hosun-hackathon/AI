@@ -222,7 +222,7 @@
           "노션 API 명세"
         ],
         "summary": "Create Training",
-        "description": "2-1 훈련 생성: 과제 조건만으로 AI 작성 글을 만든다(동기, 수십 초). 첨부파일은 받기만 하고 글에 반영하지 않는다.",
+        "description": "2-1 훈련 생성: 과제 조건과 첨부파일 글로 AI 작성 글을 만든다(동기, 수십 초).",
         "operationId": "create_training_api_v1_trainings_post",
         "requestBody": {
           "content": {
@@ -891,6 +891,18 @@
           "fileSize": {
             "type": "integer",
             "title": "Filesize"
+          },
+          "used": {
+            "type": "boolean",
+            "title": "Used",
+            "description": "AI 작성 글에 참고 자료로 반영했는지",
+            "default": false
+          },
+          "usedChars": {
+            "type": "integer",
+            "title": "Usedchars",
+            "description": "참고 자료로 넣은 글자 수 (앞부분부터)",
+            "default": 0
           }
         },
         "type": "object",
@@ -1691,6 +1703,16 @@
           "requirements": {
             "$ref": "#/components/schemas/Requirements",
             "default": {}
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "References",
+            "description": "참고 자료 글 (자료 하나당 한 덩어리). 합계 ATTACHMENT_MAX_CHARS자까지만 쓰고 나머지는 자른다",
+            "default": []
           }
         },
         "type": "object",
@@ -2040,7 +2062,7 @@
             },
             "type": "array",
             "title": "Attachments",
-            "description": "받은 첨부파일 (AI 작성 글에는 반영하지 않음)",
+            "description": "받은 첨부파일과 반영 여부. 반영하지 못한 파일은 warnings에 이유가 남는다",
             "default": []
           },
           "charCount": {
@@ -2299,7 +2321,7 @@
         "type": "object"
       },
       "TrainingCreateRequest": {
-        "description": "multipart/form-data의 request 파트(JSON). files 파트는 받기만 하고 AI 작성 글에는 쓰지 않는다.",
+        "description": "multipart/form-data의 request 파트(JSON). files 파트에서 뽑은 글은 AI 작성 글의 참고 자료로 쓴다.",
         "properties": {
           "topic": {
             "title": "Topic",
